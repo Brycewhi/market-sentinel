@@ -1,0 +1,9 @@
+.env
+*.pyc
+__pycache__/
+*.egg-info/
+.DS_Store
+airflow_logs/
+postgres_data/
+minio_data/
+airflow_postgres_data/
