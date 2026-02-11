@@ -2,32 +2,35 @@
 CREATE SCHEMA IF NOT EXISTS staging;
 CREATE SCHEMA IF NOT EXISTS analytics;
 
--- Raw sentiment logs (populated by Airflow)
+-- Raw sentiment logs
 CREATE TABLE IF NOT EXISTS staging.sentiment_logs (
     id SERIAL PRIMARY KEY,
-    ticker VARCHAR(10) NOT NULL,
-    headline TEXT NOT NULL,
+    ticker VARCHAR(10),
+    headline TEXT,
     url TEXT,
-    source VARCHAR(100),
+    source VARCHAR(50),
     published_at TIMESTAMP,
-    fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
     positive_score FLOAT,
     negative_score FLOAT,
-    neutral_score FLOAT
+    neutral_score FLOAT,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Stock price data
+-- Price data
 CREATE TABLE IF NOT EXISTS analytics.price_data (
-    id SERIAL PRIMARY KEY,
-    ticker VARCHAR(10) NOT NULL,
-    timestamp TIMESTAMP NOT NULL,
-    close_price FLOAT NOT NULL,
+    ticker VARCHAR(10),
+    timestamp TIMESTAMP,
+    close_price FLOAT,
     volume BIGINT,
-    
-    UNIQUE(ticker, timestamp)
+    PRIMARY KEY (ticker, timestamp)
 );
 
--- Create indexes for performance
-CREATE INDEX idx_sentiment_logs_ticker_time ON staging.sentiment_logs(ticker, published_at);
-CREATE INDEX idx_price_data_ticker_time ON analytics.price_data(ticker, timestamp);
+-- Aggregated hourly sentiment
+CREATE TABLE IF NOT EXISTS analytics.hourly_sentiment (
+    ticker VARCHAR(10),
+    hour TIMESTAMP,
+    avg_sentiment FLOAT,
+    sentiment_volatility FLOAT,
+    article_count INT,
+    PRIMARY KEY (ticker, hour)
+);

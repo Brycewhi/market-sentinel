@@ -22,7 +22,7 @@ with DAG(
     'ingest_news',
     default_args=default_args,
     description='Hourly news ingestion from Alpha Vantage to MinIO',
-    schedule_interval='@hourly',  # Run every hour
+    schedule_interval='0 22 * * *',  # 10 PM UTC daily
     start_date=days_ago(1),
     catchup=False,  # Don't backfill old dates
     tags=['data_pipeline', 'news_ingestion'],

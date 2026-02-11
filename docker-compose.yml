@@ -48,7 +48,7 @@ services:
       retries: 5
 
   airflow-webserver:
-    image: apache/airflow:2.7.0-python3.10
+    build: .
     environment:
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
@@ -57,6 +57,9 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: airflow
       _AIRFLOW_WWW_USER_PASSWORD: airflow
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+
+      
     ports:
       - "8080:8080"
     volumes:
@@ -70,11 +73,14 @@ services:
     command: -c "airflow db migrate && airflow webserver"
 
   airflow-scheduler:
-    image: apache/airflow:2.7.0-python3.10
+    build: .
     environment:
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres:5432/airflow
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+
+
     volumes:
       - ./dags:/opt/airflow/dags
       - ./scripts:/opt/airflow/scripts
