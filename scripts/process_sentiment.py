@@ -1,246 +1,224 @@
+"""
+process_sentiment.py - Analyze sentiment using FinBERT and save to PostgreSQL
+"""
+
+import os
 import json
-import logging
 import boto3
 from datetime import datetime
-import sqlalchemy
-from sqlalchemy import text
-import numpy as np
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-class FinBERTAnalyzer:
-    """Load FinBERT once, analyze sentiment for multiple headlines efficiently."""
-    
-    def __init__(self):
-        """Load the FinBERT model (takes ~30 seconds, do this once)."""
-        logger.info("Loading FinBERT model (this takes ~30 seconds)...")
-        self.tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-        self.model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-        logger.info("FinBERT model loaded successfully")
-    
-    def analyze_batch(self, headlines):
-        """
-        Analyze sentiment for a batch of headlines.
-        
-        Args:
-            headlines: List of headline strings
-        
-        Returns:
-            List of dicts with sentiment scores: {positive, negative, neutral}
-        """
-        if not headlines:
-            return []
-        
-        results = []
-        
-        # Process headlines in batches for efficiency
-        batch_size = 32
-        for i in range(0, len(headlines), batch_size):
-            batch = headlines[i:i + batch_size]
-            
-            # Tokenize the batch
-            inputs = self.tokenizer(
-                batch,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=512
-            )
-            
-            # Get predictions
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                logits = outputs.logits
-            
-            # Convert logits to probabilities
-            probs = torch.nn.functional.softmax(logits, dim=-1)
-            
-            # Extract scores for this batch
-            for j, prob_vector in enumerate(probs):
-                sentiment = {
-                    'negative': prob_vector[0].item(),
-                    'neutral': prob_vector[1].item(),
-                    'positive': prob_vector[2].item(),
-                }
-                results.append(sentiment)
-        
-        return results
+# Configuration
+MINIO_ENDPOINT = 'http://minio:9000'
+MINIO_ACCESS_KEY = 'minioadmin'
+MINIO_SECRET_KEY = 'minioadmin'
+BUCKET_NAME = 'raw-news'
 
-def fetch_raw_news_from_minio(ticker, minio_endpoint, access_key, secret_key):
+DB_CONNECTION_STRING = 'postgresql://market_sentinel:market_sentinel_password@postgres:5432/market_sentinel'
+
+# Model configuration
+MODEL_NAME = "ProsusAI/finbert"
+BATCH_SIZE = 32
+
+# Load FinBERT model once
+print("🤖 Loading FinBERT model...")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+model.eval()
+print("✅ FinBERT model loaded and cached")
+
+
+def parse_alpha_vantage_timestamp(time_str):
     """
-    Fetch the latest raw news JSON file for a ticker from MinIO.
-    
-    Returns the parsed JSON data.
+    Convert Alpha Vantage timestamp to Python datetime.
+    Format: '20260213T182853' → datetime(2026, 2, 13, 18, 28, 53)
     """
-    s3 = boto3.client(
+    if not time_str:
+        return None
+    try:
+        # Parse format: YYYYMMDDTHHmmss
+        return datetime.strptime(time_str, '%Y%m%dT%H%M%S')
+    except:
+        return None
+
+
+def get_latest_news_file(ticker):
+    """Get the most recent news file for a ticker from MinIO."""
+    s3_client = boto3.client(
         's3',
-        endpoint_url=minio_endpoint,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
+        endpoint_url=MINIO_ENDPOINT,
+        aws_access_key_id=MINIO_ACCESS_KEY,
+        aws_secret_access_key=MINIO_SECRET_KEY,
     )
     
-    try:
-        # List objects in raw-news bucket, filtered by ticker
-        response = s3.list_objects_v2(
-            Bucket='raw-news',
-            Prefix=f'{ticker}_'
-        )
-        
-        if 'Contents' not in response or len(response['Contents']) == 0:
-            logger.warning(f"No files found for {ticker} in MinIO")
-            return None
-        
-        # Get the most recent file (they're sorted by name, which includes timestamp)
-        latest_file = response['Contents'][-1]['Key']
-        logger.info(f"Found latest file for {ticker}: {latest_file}")
-        
-        # Download and parse the file
-        obj = s3.get_object(Bucket='raw-news', Key=latest_file)
-        data = json.loads(obj['Body'].read().decode('utf-8'))
-        
-        return data
+    response = s3_client.list_objects_v2(Bucket=BUCKET_NAME, Prefix=ticker)
     
-    except Exception as e:
-        logger.error(f"Error fetching news from MinIO for {ticker}: {str(e)}")
-        raise
+    if 'Contents' not in response:
+        print(f"⚠️  No files found for {ticker}")
+        return None, None
+    
+    files = sorted(response['Contents'], key=lambda x: x['LastModified'], reverse=True)
+    
+    if not files:
+        return None, None
+    
+    latest_file = files[0]['Key']
+    print(f"📄 Found latest file: {latest_file}")
+    
+    obj = s3_client.get_object(Bucket=BUCKET_NAME, Key=latest_file)
+    content = obj['Body'].read().decode('utf-8')
+    
+    return latest_file, content
 
-def extract_headlines(news_data):
-    """
-    Extract headlines from Alpha Vantage API response.
-    
-    Args:
-        news_data: Raw API response JSON
-    
-    Returns:
-        List of headline strings
-    """
-    headlines = []
-    
-    if 'feed' not in news_data:
-        logger.warning("No 'feed' key in news data")
-        return headlines
-    
-    for item in news_data['feed']:
-        if 'title' in item:
-            headlines.append(item['title'])
-    
-    logger.info(f"Extracted {len(headlines)} headlines")
-    return headlines
 
-def store_sentiment_scores(ticker, headlines, sentiment_scores, db_connection_string):
-    """
-    Store sentiment scores in PostgreSQL staging table.
-    Uses ON CONFLICT to skip duplicates gracefully.
+def analyze_sentiment_batch(headlines):
+    """Analyze sentiment for a batch of headlines using FinBERT."""
+    if not headlines:
+        return []
     
-    Args:
-        ticker: Stock symbol
-        headlines: List of headline strings
-        sentiment_scores: List of sentiment score dictionaries
-        db_connection_string: PostgreSQL connection string
-    """
-    engine = sqlalchemy.create_engine(db_connection_string)
+    inputs = tokenizer(
+        headlines,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=512
+    )
     
-    try:
-        inserted_count = 0
-        skipped_count = 0
-        
-        with engine.connect() as conn:
-            with conn.begin():  # Start a transaction
-                for headline, sentiment in zip(headlines, sentiment_scores):
-                    insert_query = text("""
-                        INSERT INTO staging.sentiment_logs 
-                        (ticker, headline, positive_score, negative_score, neutral_score)
-                        VALUES (:ticker, :headline, :positive, :negative, :neutral)
-                        ON CONFLICT (ticker, headline) DO NOTHING
-                    """)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    
+    probabilities = torch.nn.functional.softmax(outputs.logits, dim=-1)
+    
+    results = []
+    for probs in probabilities:
+        results.append({
+            'positive': probs[0].item(),
+            'negative': probs[1].item(),
+            'neutral': probs[2].item()
+        })
+    
+    return results
+
+
+def save_to_database(ticker, articles_with_sentiment):
+    """Save sentiment analysis results to PostgreSQL with timestamps."""
+    engine = create_engine(DB_CONNECTION_STRING)
+    
+    inserted_count = 0
+    duplicate_count = 0
+    
+    with engine.begin() as conn:
+        for item in articles_with_sentiment:
+            try:
+                query = text("""
+                    INSERT INTO staging.sentiment_logs 
+                    (ticker, headline, url, source, published_at, positive_score, negative_score, neutral_score, created_at)
+                    VALUES (:ticker, :headline, :url, :source, :published_at, :positive, :negative, :neutral, :created_at)
+                    ON CONFLICT (ticker, headline) DO NOTHING
+                """)
+                
+                result = conn.execute(query, {
+                    'ticker': ticker,
+                    'headline': item['headline'],
+                    'url': item.get('url'),
+                    'source': item.get('source'),
+                    'published_at': item.get('published_at'),  # ← NEW!
+                    'positive': item['positive'],
+                    'negative': item['negative'],
+                    'neutral': item['neutral'],
+                    'created_at': datetime.now()
+                })
+                
+                if result.rowcount > 0:
+                    inserted_count += 1
+                else:
+                    duplicate_count += 1
                     
-                    result = conn.execute(insert_query, {
-                        'ticker': ticker,
-                        'headline': headline,
-                        'positive': sentiment['positive'],
-                        'negative': sentiment['negative'],
-                        'neutral': sentiment['neutral']
-                    })
-                    
-                    if result.rowcount > 0:
-                        inserted_count += 1
-                    else:
-                        skipped_count += 1
-            # Transaction auto-commits here
-            
-            logger.info(f"Stored {inserted_count} new sentiment scores for {ticker} (skipped {skipped_count} duplicates)")
-            
-    except Exception as e:
-        logger.error(f"Error storing sentiment scores: {str(e)}")
-        raise
-
-def process_sentiment_for_ticker(ticker, analyzer, minio_endpoint, minio_access_key, 
-                                 minio_secret_key, db_connection_string):
-    """
-    Complete pipeline: fetch raw news → extract headlines → analyze sentiment → store results.
+            except Exception as e:
+                print(f"⚠️  Error inserting headline: {str(e)}")
+                continue
     
-    This is the main function that Airflow will call.
-    """
+    print(f"✅ Inserted {inserted_count} new records, skipped {duplicate_count} duplicates")
+    
+    return inserted_count
+
+
+def main(ticker):
+    """Main function: Process sentiment for latest news file."""
     try:
-        logger.info(f"Processing sentiment for {ticker}...")
+        print(f"🔍 Processing sentiment for {ticker}...")
+        filename, content = get_latest_news_file(ticker)
         
-        # Step 1: Fetch raw news from MinIO
-        news_data = fetch_raw_news_from_minio(ticker, minio_endpoint, minio_access_key, minio_secret_key)
-        if news_data is None:
-            logger.warning(f"No data for {ticker}, skipping")
+        if not filename:
+            print(f"⚠️  No news files found for {ticker}")
             return
         
-        # Step 2: Extract headlines
-        headlines = extract_headlines(news_data)
-        if not headlines:
-            logger.warning(f"No headlines found for {ticker}")
+        data = json.loads(content)
+        articles = data.get('feed', [])
+        
+        if not articles:
+            print(f"⚠️  No articles in file {filename}")
             return
         
-        # Step 3: Analyze sentiment (batch processing)
-        sentiment_scores = analyzer.analyze_batch(headlines)
+        print(f"📊 Found {len(articles)} articles")
         
-        # Step 4: Store in PostgreSQL
-        store_sentiment_scores(ticker, headlines, sentiment_scores, db_connection_string)
+        # Extract articles with metadata
+        articles_data = []
+        for article in articles:
+            if article.get('title'):
+                articles_data.append({
+                    'headline': article.get('title', ''),
+                    'url': article.get('url', ''),
+                    'source': article.get('source', ''),
+                    'time_published': article.get('time_published', '')  # ← Extract timestamp
+                })
         
-        logger.info(f"Successfully processed sentiment for {ticker}")
+        print(f"📰 Extracted {len(articles_data)} articles with metadata")
+        
+        # Analyze sentiment in batches
+        print(f"🤖 Analyzing sentiment with FinBERT (batch size: {BATCH_SIZE})...")
+        all_results = []
+        
+        for i in range(0, len(articles_data), BATCH_SIZE):
+            batch_articles = articles_data[i:i + BATCH_SIZE]
+            batch_headlines = [a['headline'] for a in batch_articles]
+            
+            batch_results = analyze_sentiment_batch(batch_headlines)
+            
+            # Combine metadata with sentiment scores
+            for article, scores in zip(batch_articles, batch_results):
+                all_results.append({
+                    'headline': article['headline'],
+                    'url': article['url'],
+                    'source': article['source'],
+                    'published_at': parse_alpha_vantage_timestamp(article['time_published']),  # ← Parse timestamp
+                    'positive': scores['positive'],
+                    'negative': scores['negative'],
+                    'neutral': scores['neutral']
+                })
+            
+            print(f"  ✓ Processed batch {i//BATCH_SIZE + 1}/{(len(articles_data)-1)//BATCH_SIZE + 1}")
+        
+        print(f"✅ Sentiment analysis complete: {len(all_results)} articles analyzed")
+        
+        # Save to database
+        print(f"💾 Saving to database...")
+        inserted = save_to_database(ticker, all_results)
+        
+        print(f"🎉 Pipeline completed for {ticker}: {inserted} new records")
+        
+        return inserted
         
     except Exception as e:
-        logger.error(f"Error processing sentiment for {ticker}: {str(e)}")
+        print(f"❌ Error processing {ticker}: {str(e)}")
         raise
 
-def main(tickers, minio_endpoint, minio_access_key, minio_secret_key, db_connection_string):
-    """
-    Main entry point. Process sentiment for all tickers.
-    
-    This is what Airflow DAG will call.
-    """
-    # Load FinBERT once (reused for all tickers)
-    analyzer = FinBERTAnalyzer()
-    
-    # Process each ticker
-    for ticker in tickers:
-        process_sentiment_for_ticker(
-            ticker,
-            analyzer,
-            minio_endpoint,
-            minio_access_key,
-            minio_secret_key,
-            db_connection_string
-        )
 
 if __name__ == "__main__":
-    import os
-    
-    # Configuration
-    tickers = ['AAPL', 'MSFT', 'GOOGL']
-    minio_endpoint = os.getenv('MINIO_ENDPOINT', 'http://localhost:9000')
-    minio_access_key = os.getenv('MINIO_ROOT_USER', 'minioadmin')
-    minio_secret_key = os.getenv('MINIO_ROOT_PASSWORD', 'minioadmin')
-    db_connection_string = 'postgresql://market_sentinel:market_sentinel_password@localhost:5432/market_sentinel'
-    
-    # Run
-    main(tickers, minio_endpoint, minio_access_key, minio_secret_key, db_connection_string)
+    import sys
+    ticker = sys.argv[1] if len(sys.argv) > 1 else "AAPL"
+    main(ticker)

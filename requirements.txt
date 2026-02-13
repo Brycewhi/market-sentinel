@@ -3,3 +3,5 @@ torch
 sqlalchemy
 boto3
 requests
+dbt-postgres==1.7.0
+
