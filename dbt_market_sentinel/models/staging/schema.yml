@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: staging
+    schema: staging
+    tables:
+      - name: sentiment_logs
+        description: "Raw sentiment analysis results from FinBERT"
+
+models:
+  - name: stg_sentiment
+    description: "Cleaned sentiment data with calculated fields"
+    columns:
+      - name: id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: net_sentiment
+        description: "Positive minus negative score (-1 to +1)"
+      - name: sentiment_label
+        description: "Categorized sentiment: bullish, bearish, or neutral"

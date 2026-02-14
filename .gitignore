@@ -7,3 +7,8 @@ airflow_logs/
 postgres_data/
 minio_data/
 airflow_postgres_data/
+
+# dbt artifacts
+dbt_market_sentinel/target/
+dbt_market_sentinel/logs/
+dbt_market_sentinel/dbt_packages/
