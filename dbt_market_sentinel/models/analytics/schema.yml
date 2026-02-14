@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: hourly_sentiment_agg
+    description: "Hourly sentiment aggregations with volatility metrics"
+    columns:
+      - name: ticker
+        tests:
+          - not_null
+      - name: hour
+        tests:
+          - not_null
+      - name: avg_sentiment
+        tests:
+          - not_null
+      - name: sentiment_volatility
+        description: "Standard deviation of sentiment (0-2 range)"
+      - name: article_count
+        tests:
+          - not_null
+        description: "Number of articles in this hour"
+
+  - name: rolling_sentiment
+    description: "Rolling statistics and trend indicators"
+    columns:
+      - name: ticker
+        tests:
+          - not_null
+      - name: hour
+        tests:
+          - not_null
+      - name: sentiment_7hr_ma
+        description: "7-hour moving average of sentiment"
+      - name: sentiment_zscore
+        description: "Z-score normalized sentiment for cross-ticker comparison"
