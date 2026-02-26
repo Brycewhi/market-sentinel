@@ -58,6 +58,7 @@ services:
       _AIRFLOW_WWW_USER_USERNAME: airflow
       _AIRFLOW_WWW_USER_PASSWORD: airflow
       ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
 
       
     ports:
@@ -80,6 +81,7 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres:5432/airflow
       ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
 
     volumes:

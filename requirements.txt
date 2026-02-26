@@ -4,4 +4,5 @@ sqlalchemy
 boto3
 requests
 dbt-postgres==1.7.0
+yfinance==1.2.0
 
