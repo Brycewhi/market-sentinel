@@ -28,21 +28,14 @@ with DAG(
     
     # Configuration
     tickers = ['AAPL', 'MSFT', 'GOOGL']
-    minio_endpoint = 'http://minio:9000'  # Inside Docker network
-    minio_access_key = os.getenv('MINIO_ROOT_USER', 'minioadmin')
-    minio_secret_key = os.getenv('MINIO_ROOT_PASSWORD', 'minioadmin')
-    db_connection_string = 'postgresql://market_sentinel:market_sentinel_password@postgres:5432/market_sentinel'
     
-    # Single task that processes all tickers
-    # (FinBERT is loaded once, reused for all tickers = efficient)
-    analyze_sentiment = PythonOperator(
-        task_id='analyze_sentiment',
-        python_callable=main,
-        op_kwargs={
-            'tickers': tickers,
-            'minio_endpoint': minio_endpoint,
-            'minio_access_key': minio_access_key,
-            'minio_secret_key': minio_secret_key,
-            'db_connection_string': db_connection_string,
-        },
-    )
+    # Create a task for each ticker
+    for ticker in tickers:
+        analyze_sentiment_task = PythonOperator(
+            task_id=f'analyze_sentiment_{ticker}',
+            python_callable=main,
+            op_kwargs={
+                'ticker': ticker,
+            },
+        )
+    

@@ -10,7 +10,7 @@ import os
 
 # Database connection - connects to the data postgres container
 DB_USER = os.getenv('POSTGRES_USER', 'market_sentinel')
-DB_PASS = os.getenv('POSTGRES_PASSWORD', 'airflow')
+DB_PASS = os.getenv('POSTGRES_PASSWORD')  
 DB_HOST = 'postgres'  
 DB_PORT = '5432'
 DB_NAME = os.getenv('POSTGRES_DB', 'market_sentinel')
@@ -51,14 +51,35 @@ def fetch_price_data(ticker, days=30):
 def store_price_data(price_df, engine):
     """Store price data in PostgreSQL."""
     try:
-        price_df.to_sql(
-            name='price_data',
-            schema='staging',
-            con=engine,
-            if_exists='append',
-            index=False
-        )
-        print(f"Stored {len(price_df)} rows in database")
+        from sqlalchemy import text
+        
+        # Use begin() instead of connect() to get a transaction
+        with engine.begin() as conn:
+            for _, row in price_df.iterrows():
+                # Use INSERT ... ON CONFLICT DO UPDATE (upsert)
+                sql = text("""
+                    INSERT INTO staging.price_data (date, ticker, open, high, low, close, volume)
+                    VALUES (:date, :ticker, :open, :high, :low, :close, :volume)
+                    ON CONFLICT (ticker, date) 
+                    DO UPDATE SET
+                        open = EXCLUDED.open,
+                        high = EXCLUDED.high,
+                        low = EXCLUDED.low,
+                        close = EXCLUDED.close,
+                        volume = EXCLUDED.volume
+                """)
+                
+                conn.execute(sql, {
+                    'date': row['date'],
+                    'ticker': row['ticker'],
+                    'open': row['open'],
+                    'high': row['high'],
+                    'low': row['low'],
+                    'close': row['close'],
+                    'volume': int(row['volume'])
+                })
+                    
+        print(f"Stored/updated {len(price_df)} rows in database")
         
     except Exception as e:
         print(f"ERROR storing data: {str(e)}")
