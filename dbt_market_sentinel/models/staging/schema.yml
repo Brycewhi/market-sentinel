@@ -6,6 +6,9 @@ sources:
     tables:
       - name: sentiment_logs
         description: "Raw sentiment analysis results from FinBERT"
+        
+      - name: price_data
+        description: "Daily stock price data from Yahoo Finance"
 
 models:
   - name: stg_sentiment
