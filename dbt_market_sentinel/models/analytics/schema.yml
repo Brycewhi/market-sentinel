@@ -33,3 +33,69 @@ models:
         description: "7-hour moving average of sentiment"
       - name: sentiment_zscore
         description: "Z-score normalized sentiment for cross-ticker comparison"
+
+  - name: volatility_metrics
+    description: >
+      Volatility analysis layer built on top of sentiment_with_prices. Adds 7-day
+      rolling price and sentiment volatility windows, plus z-score normalization for
+      both price change and sentiment volatility. Only rows with a full 7-day history
+      per ticker are included. Correlation analysis across AAPL, GOOGL, and MSFT
+      shows MSFT (+0.88) and GOOGL (+0.63) have positive sentiment-price volatility
+      relationships, while AAPL (-0.66) is inversely correlated.
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: date
+        description: "Trading date"
+        tests:
+          - not_null
+      - name: avg_net_sentiment
+        description: "Daily average net sentiment (positive_score - negative_score) across all articles"
+      - name: sentiment_volatility
+        description: "Daily standard deviation of net sentiment across articles — measures intra-day sentiment disagreement"
+      - name: article_count
+        description: "Number of articles processed for this ticker on this date"
+      - name: avg_positive
+        description: "Daily average positive sentiment score"
+      - name: avg_negative
+        description: "Daily average negative sentiment score"
+      - name: avg_neutral
+        description: "Daily average neutral sentiment score"
+      - name: open
+        description: "Opening price for the trading day"
+      - name: high
+        description: "Intraday high price"
+      - name: low
+        description: "Intraday low price"
+      - name: close_price
+        description: "Closing price for the trading day"
+      - name: volume
+        description: "Share volume traded"
+      - name: prev_close
+        description: "Prior trading day closing price (via LAG)"
+      - name: price_change
+        description: "Absolute price change from prior close (close - prev_close)"
+      - name: price_change_pct
+        description: "Percentage price change from prior close ((close - prev_close) / prev_close * 100)"
+      - name: rolling_price_volatility_7d
+        description: >
+          7-day rolling standard deviation of price_change_pct, partitioned by ticker.
+          Uses ROWS BETWEEN 6 PRECEDING AND CURRENT ROW. Measures how erratic daily
+          price moves have been over the past week.
+      - name: rolling_sentiment_volatility_7d
+        description: >
+          7-day rolling average of daily sentiment_volatility, partitioned by ticker.
+          Uses ROWS BETWEEN 6 PRECEDING AND CURRENT ROW. Smooths intra-day sentiment
+          disagreement into a weekly trend signal.
+      - name: price_change_pct_zscore
+        description: >
+          Z-score of price_change_pct normalized within each ticker's full history
+          ((value - ticker_mean) / ticker_stddev). Enables cross-ticker comparison of
+          relative price moves. NULLIF guards against divide-by-zero when stddev is 0.
+      - name: sentiment_volatility_zscore
+        description: >
+          Z-score of sentiment_volatility normalized within each ticker's full history
+          ((value - ticker_mean) / ticker_stddev). Enables cross-ticker comparison of
+          relative sentiment disagreement. NULLIF guards against divide-by-zero when stddev is 0.
