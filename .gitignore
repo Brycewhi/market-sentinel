@@ -12,3 +12,4 @@ airflow_postgres_data/
 dbt_market_sentinel/target/
 dbt_market_sentinel/logs/
 dbt_market_sentinel/dbt_packages/
+scripts/backfill_progress.json
