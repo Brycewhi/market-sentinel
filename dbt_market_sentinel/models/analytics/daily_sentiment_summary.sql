@@ -2,7 +2,7 @@
 
 SELECT
     ticker,
-    DATE(created_at) AS date,
+    DATE(published_at) AS date,
     COUNT(*) AS article_count,
     AVG(positive_score - negative_score) AS net_sentiment,
     STDDEV(positive_score - negative_score) AS sentiment_volatility,
@@ -16,5 +16,5 @@ SELECT
 
 FROM {{ ref('stg_sentiment') }}
 
-GROUP BY ticker, DATE(created_at)
+GROUP BY ticker, DATE(published_at)
 HAVING COUNT(*) >= 3

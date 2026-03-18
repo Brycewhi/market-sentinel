@@ -23,8 +23,8 @@ DB_CONNECTION_STRING = 'postgresql://market_sentinel:market_sentinel_password@po
 MODEL_NAME = "ProsusAI/finbert"
 BATCH_SIZE = 32
 
-# Pattern: TICKER_YYYYMMDD_timestamp.json
-BACKFILL_PATTERN = re.compile(r'^([A-Z]+)_(\d{8})_\d+\.json$')
+# Pattern: TICKER_YYYYMMDD_timestamp.json (daily) or TICKER_YYYYMMDD_YYYYMMDD_timestamp.json (weekly backfill)
+BACKFILL_PATTERN = re.compile(r'^([A-Z]+)_(\d{8})_(?:\d{8}_)?\d+\.json$')
 
 # Load FinBERT model once
 print("Loading FinBERT model...")
