@@ -1,174 +1,209 @@
 """
-analyze_correlations.py - Statistical analysis of sentiment-price correlations
+analyze_correlations.py - Statistical correlation analysis: sentiment vs price movements.
+Joins analytics.sentiment_trends with staging.price_data, computes Pearson + Spearman
+correlations with p-values to test whether sentiment predicts next-day price movements.
 """
 
+import os
 import pandas as pd
-from sqlalchemy import create_engine
-from scipy.stats import pearsonr
 import numpy as np
+from sqlalchemy import create_engine
+from scipy.stats import pearsonr, spearmanr
 from datetime import datetime
 
-# Database connection
 DB_CONNECTION_STRING = 'postgresql://market_sentinel:market_sentinel_password@postgres:5432/market_sentinel'
+TICKERS = ['AAPL', 'MSFT', 'GOOGL']
+OUTPUT_DIR = 'analysis_results'
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'correlation_analysis.csv')
 
-def analyze_correlations():
+CORRELATION_PAIRS = [
+    ('net_sentiment',        'next_day_return',      'Net Sentiment vs Next-Day Return'),
+    ('sentiment_volatility', 'price_volatility_7d',  'Sentiment Volatility vs Price Volatility 7D'),
+    ('bull_bear_ratio',      'next_day_return',       'Bull/Bear Ratio vs Next-Day Return'),
+    ('sentiment_ma_7d',      'next_day_return',       'Sentiment MA-7D vs Next-Day Return'),
+]
+
+SIG_LEVELS = [(0.001, '***'), (0.01, '**'), (0.05, '*'), (1.0, '')]
+
+
+def sig_stars(p):
+    for threshold, stars in SIG_LEVELS:
+        if p < threshold:
+            return stars
+    return ''
+
+
+def load_data(engine):
+    sentiment_q = """
+        SELECT ticker, date, net_sentiment, sentiment_volatility,
+               bull_bear_ratio, sentiment_ma_7d
+        FROM analytics.sentiment_trends
+        ORDER BY ticker, date
     """
-    Analyze correlations between sentiment and price movements with statistical significance
+    price_q = """
+        SELECT ticker, date, close
+        FROM staging.price_data
+        ORDER BY ticker, date
     """
-    print("="*80)
-    print(f"Correlation Analysis - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*80)
-    print()
-    
-    # Connect to database
-    engine = create_engine(DB_CONNECTION_STRING)
-    
-    # Query the joined data
-    query = """
-    SELECT 
-        ticker,
-        date,
-        avg_net_sentiment,
-        sentiment_volatility,
-        price_change_pct,
-        article_count
-    FROM analytics.sentiment_with_prices
-    ORDER BY ticker, date
-    """
-    
-    print("📊 Loading data from database...")
-    df = pd.read_sql(query, engine)
-    print(f"   Loaded {len(df)} rows of data")
-    print()
-    
-    # Results storage
-    results = []
-    
-    # Analyze each ticker
-    for ticker in ['AAPL', 'MSFT', 'GOOGL']:
-        print(f"\n{'='*80}")
-        print(f"📈 {ticker} Analysis")
-        print(f"{'='*80}")
-        
-        ticker_data = df[df['ticker'] == ticker].copy()
-        n = len(ticker_data)
-        
-        if n < 3:
-            print(f"   ⚠️  Insufficient data ({n} days) - need at least 3 days")
+    sentiment = pd.read_sql(sentiment_q, engine)
+    prices = pd.read_sql(price_q, engine)
+    return sentiment, prices
+
+
+def build_analysis_df(sentiment, prices):
+    # Compute daily return and next-day return
+    prices = prices.copy()
+    prices['daily_return'] = prices.groupby('ticker')['close'].pct_change() * 100
+    prices['next_day_return'] = prices.groupby('ticker')['daily_return'].shift(-1)
+
+    # Rolling 7-day price volatility (std of daily returns)
+    prices['price_volatility_7d'] = (
+        prices.groupby('ticker')['daily_return']
+        .transform(lambda x: x.rolling(7, min_periods=3).std())
+    )
+
+    # Join sentiment (date) with price (date) on ticker + date
+    df = pd.merge(
+        sentiment,
+        prices[['ticker', 'date', 'next_day_return', 'price_volatility_7d']],
+        on=['ticker', 'date'],
+        how='inner'
+    )
+    return df
+
+
+def compute_correlations(data, label):
+    """Return list of result dicts for all correlation pairs on the given DataFrame."""
+    rows = []
+    n_total = len(data)
+    for x_col, y_col, pair_label in CORRELATION_PAIRS:
+        subset = data[[x_col, y_col]].dropna()
+        n = len(subset)
+        if n < 5:
+            rows.append({
+                'group': label,
+                'pair': pair_label,
+                'pearson_r': np.nan,
+                'pearson_p': np.nan,
+                'spearman_r': np.nan,
+                'spearman_p': np.nan,
+                'n': n,
+                'significance': 'insufficient data',
+            })
             continue
-        
-        print(f"   Sample size: {n} days")
-        print(f"   Date range: {ticker_data['date'].min()} to {ticker_data['date'].max()}")
-        print()
-        
-        # 1. Sentiment vs Price Change correlation
-        print("   📊 Sentiment → Price Change Correlation:")
-        r_sentiment_price, p_sentiment_price = pearsonr(
-            ticker_data['avg_net_sentiment'], 
-            ticker_data['price_change_pct']
-        )
-        
-        print(f"      Correlation (r): {r_sentiment_price:.4f}")
-        print(f"      P-value:         {p_sentiment_price:.4f}")
-        print(f"      Significant:     {'✅ YES (p < 0.05)' if p_sentiment_price < 0.05 else '❌ NO (p >= 0.05)'}")
-        
-        # Interpret correlation strength
-        strength = interpret_correlation(abs(r_sentiment_price))
-        print(f"      Strength:        {strength}")
-        print()
-        
-        # 2. Sentiment Volatility vs Absolute Price Change correlation
-        print("   📊 Sentiment Volatility → Absolute Price Change Correlation:")
-        r_vol_abs, p_vol_abs = pearsonr(
-            ticker_data['sentiment_volatility'], 
-            ticker_data['price_change_pct'].abs()
-        )
-        
-        print(f"      Correlation (r): {r_vol_abs:.4f}")
-        print(f"      P-value:         {p_vol_abs:.4f}")
-        print(f"      Significant:     {'✅ YES (p < 0.05)' if p_vol_abs < 0.05 else '❌ NO (p >= 0.05)'}")
-        
-        strength_vol = interpret_correlation(abs(r_vol_abs))
-        print(f"      Strength:        {strength_vol}")
-        print()
-        
-        # 3. Summary statistics
-        print("   📈 Sentiment Statistics:")
-        print(f"      Mean sentiment:      {ticker_data['avg_net_sentiment'].mean():.4f}")
-        print(f"      Sentiment std dev:   {ticker_data['avg_net_sentiment'].std():.4f}")
-        print(f"      Mean volatility:     {ticker_data['sentiment_volatility'].mean():.4f}")
-        print()
-        
-        print("   💰 Price Statistics:")
-        print(f"      Mean price change:   {ticker_data['price_change_pct'].mean():.2f}%")
-        print(f"      Price std dev:       {ticker_data['price_change_pct'].std():.2f}%")
-        print(f"      Max gain:            {ticker_data['price_change_pct'].max():.2f}%")
-        print(f"      Max loss:            {ticker_data['price_change_pct'].min():.2f}%")
-        print()
-        
-        # Store results
-        results.append({
-            'ticker': ticker,
-            'sample_size': n,
-            'date_start': ticker_data['date'].min(),
-            'date_end': ticker_data['date'].max(),
-            'sentiment_price_correlation': r_sentiment_price,
-            'sentiment_price_pvalue': p_sentiment_price,
-            'sentiment_price_significant': p_sentiment_price < 0.05,
-            'vol_abschange_correlation': r_vol_abs,
-            'vol_abschange_pvalue': p_vol_abs,
-            'vol_abschange_significant': p_vol_abs < 0.05,
-            'mean_sentiment': ticker_data['avg_net_sentiment'].mean(),
-            'mean_price_change_pct': ticker_data['price_change_pct'].mean(),
-            'price_volatility': ticker_data['price_change_pct'].std()
+
+        pr, pp = pearsonr(subset[x_col], subset[y_col])
+        sr, sp = spearmanr(subset[x_col], subset[y_col])
+
+        # Use the more conservative (higher) p-value for significance display
+        min_p = min(pp, sp)
+        rows.append({
+            'group': label,
+            'pair': pair_label,
+            'pearson_r': pr,
+            'pearson_p': pp,
+            'spearman_r': sr,
+            'spearman_p': sp,
+            'n': n,
+            'significance': sig_stars(min_p),
         })
-    
-    # Create results DataFrame
-    results_df = pd.DataFrame(results)
-    
-    # Save to CSV
-    output_file = 'correlation_analysis_results.csv'
-    results_df.to_csv(output_file, index=False)
-    print(f"\n{'='*80}")
-    print(f"💾 Results saved to: {output_file}")
-    print(f"{'='*80}")
-    
-    # Overall summary
-    print(f"\n{'='*80}")
-    print("📋 SUMMARY")
-    print(f"{'='*80}")
-    
-    significant_correlations = results_df[results_df['sentiment_price_significant'] == True]
-    
-    if len(significant_correlations) > 0:
-        print(f"\n✅ Statistically Significant Correlations Found:")
-        for _, row in significant_correlations.iterrows():
-            print(f"   • {row['ticker']}: r={row['sentiment_price_correlation']:.3f}, p={row['sentiment_price_pvalue']:.4f}")
+    return rows
+
+
+def print_table(results):
+    col_widths = {
+        'group':      12,
+        'pair':       46,
+        'pearson_r':   9,
+        'pearson_p':   9,
+        'spearman_r':  9,
+        'spearman_p':  9,
+        'n':           6,
+        'sig':         5,
+    }
+    header = (
+        f"{'Group':<{col_widths['group']}} "
+        f"{'Metric Pair':<{col_widths['pair']}} "
+        f"{'Pearson r':>{col_widths['pearson_r']}} "
+        f"{'p-value':>{col_widths['pearson_p']}} "
+        f"{'Spearman r':>{col_widths['spearman_r']}} "
+        f"{'p-value':>{col_widths['spearman_p']}} "
+        f"{'N':>{col_widths['n']}} "
+        f"{'Sig':<{col_widths['sig']}}"
+    )
+    sep = '-' * len(header)
+    print(sep)
+    print(header)
+    print(sep)
+    for row in results:
+        pr = f"{row['pearson_r']:.4f}"  if not np.isnan(row.get('pearson_r', float('nan'))) else 'N/A'
+        pp = f"{row['pearson_p']:.4f}"  if not np.isnan(row.get('pearson_p', float('nan'))) else 'N/A'
+        sr = f"{row['spearman_r']:.4f}" if not np.isnan(row.get('spearman_r', float('nan'))) else 'N/A'
+        sp = f"{row['spearman_p']:.4f}" if not np.isnan(row.get('spearman_p', float('nan'))) else 'N/A'
+        sig = row['significance']
+        print(
+            f"{row['group']:<{col_widths['group']}} "
+            f"{row['pair']:<{col_widths['pair']}} "
+            f"{pr:>{col_widths['pearson_r']}} "
+            f"{pp:>{col_widths['pearson_p']}} "
+            f"{sr:>{col_widths['spearman_r']}} "
+            f"{sp:>{col_widths['spearman_p']}} "
+            f"{row['n']:>{col_widths['n']}} "
+            f"{sig:<{col_widths['sig']}}"
+        )
+    print(sep)
+    print("Significance: * p<0.05   ** p<0.01   *** p<0.001")
+
+
+def main():
+    print('=' * 80)
+    print(f"Correlation Analysis  |  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print('=' * 80)
+
+    engine = create_engine(DB_CONNECTION_STRING)
+    print("Loading data...")
+    sentiment, prices = load_data(engine)
+    print(f"  sentiment_trends: {len(sentiment)} rows | price_data: {len(prices)} rows")
+
+    df = build_analysis_df(sentiment, prices)
+    print(f"  Joined dataset:   {len(df)} rows after inner join")
+    print(f"  Date range:       {df['date'].min()} to {df['date'].max()}")
+    print()
+
+    all_results = []
+
+    # Per-ticker analysis
+    for ticker in TICKERS:
+        tdf = df[df['ticker'] == ticker]
+        results = compute_correlations(tdf, ticker)
+        all_results.extend(results)
+
+    # Overall combined analysis
+    overall = compute_correlations(df, 'OVERALL')
+    all_results.extend(overall)
+
+    # Print results table
+    print_table(all_results)
+    print()
+
+    # Save CSV
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    out_df = pd.DataFrame(all_results)
+    out_df.to_csv(OUTPUT_FILE, index=False)
+    print(f"Results saved to: {OUTPUT_FILE}")
+
+    # Quick interpretation
+    sig_rows = [r for r in all_results if r['significance'] and r['group'] == 'OVERALL']
+    print()
+    if sig_rows:
+        print("Statistically significant overall correlations:")
+        for r in sig_rows:
+            direction = 'positive' if r['pearson_r'] > 0 else 'negative'
+            print(f"  {r['pair']}: r={r['pearson_r']:.3f} ({direction}), p={r['pearson_p']:.4f} {r['significance']}")
     else:
-        print(f"\n⚠️  No statistically significant correlations found (need p < 0.05)")
-        print(f"   This could be due to small sample size - collect more data!")
-    
-    print(f"\n{'='*80}")
-    print("✅ Analysis Complete!")
-    print(f"{'='*80}\n")
-    
-    return results_df
+        print("No statistically significant overall correlations found.")
+        print("Consider collecting more data to increase statistical power.")
 
 
-def interpret_correlation(r):
-    """Interpret correlation strength"""
-    abs_r = abs(r)
-    if abs_r >= 0.8:
-        return "Very Strong"
-    elif abs_r >= 0.6:
-        return "Strong"
-    elif abs_r >= 0.4:
-        return "Moderate"
-    elif abs_r >= 0.2:
-        return "Weak"
-    else:
-        return "Very Weak"
-
-
-if __name__ == "__main__":
-    analyze_correlations()
+if __name__ == '__main__':
+    main()
