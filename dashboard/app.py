@@ -577,6 +577,208 @@ def page_overview(ticker: str, start_date: date, end_date: date):
     else:
         st.info("No sentiment data for chart.")
 
+    # ── Sentiment vs Price Dual-Axis Overlay ──
+    st.markdown('<p class="section-title">Sentiment vs Price Overlay</p>', unsafe_allow_html=True)
+
+    if ticker == "All Tickers":
+        st.info("Please select a specific ticker to view dual-axis chart.")
+    else:
+        sent_df = df_sent[df_sent["ticker"] == ticker].sort_values("date")[["date", "net_sentiment"]].dropna()
+        prc_df  = df_price[df_price["ticker"] == ticker].sort_values("date")[["date", "close"]].dropna() if not df_price.empty else pd.DataFrame()
+
+        if sent_df.empty or prc_df.empty:
+            st.info("Insufficient data to render dual-axis chart for the selected period.")
+        else:
+            merged = pd.merge(sent_df, prc_df, on="date", how="inner").sort_values("date")
+
+            if merged.empty:
+                st.info("No overlapping dates between sentiment and price data.")
+            else:
+                fig_overlay = go.Figure()
+
+                # Background shading: positive sentiment = green fill, negative = red fill
+                pos_sent = merged["net_sentiment"].clip(lower=0)
+                neg_sent = merged["net_sentiment"].clip(upper=0)
+
+                fig_overlay.add_trace(go.Scatter(
+                    x=merged["date"], y=pos_sent,
+                    fill="tozeroy", mode="none",
+                    fillcolor="rgba(0,255,136,0.12)",
+                    showlegend=False, hoverinfo="skip",
+                    yaxis="y",
+                ))
+                fig_overlay.add_trace(go.Scatter(
+                    x=merged["date"], y=neg_sent,
+                    fill="tozeroy", mode="none",
+                    fillcolor="rgba(255,68,68,0.12)",
+                    showlegend=False, hoverinfo="skip",
+                    yaxis="y",
+                ))
+
+                # Sentiment line (left axis)
+                fig_overlay.add_trace(go.Scatter(
+                    x=merged["date"],
+                    y=merged["net_sentiment"],
+                    mode="lines",
+                    name="Sentiment",
+                    line=dict(color="#00d4ff", width=2.5),
+                    yaxis="y",
+                    hovertemplate="<b>%{x|%b %d}</b><br>Sentiment: %{y:.3f}<extra></extra>",
+                ))
+
+                # Price line (right axis)
+                fig_overlay.add_trace(go.Scatter(
+                    x=merged["date"],
+                    y=merged["close"],
+                    mode="lines",
+                    name="Price",
+                    line=dict(color="#00ff88", width=2.5),
+                    yaxis="y2",
+                    hovertemplate="<b>%{x|%b %d}</b><br>Price: $%{y:.2f}<extra></extra>",
+                ))
+
+                fig_overlay.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#b8c5d6", family="Courier New"),
+                    title=dict(
+                        text=f"Sentiment vs Price — Dual-Axis View ({ticker})",
+                        font=dict(color="#ffffff", size=14),
+                    ),
+                    xaxis=dict(
+                        gridcolor="#243a52",
+                        griddash="dot",
+                        showgrid=True,
+                        zeroline=False,
+                    ),
+                    yaxis=dict(
+                        title=dict(text="Sentiment", font=dict(color="#00d4ff")),
+                        tickfont=dict(color="#00d4ff"),
+                        gridcolor="#243a52",
+                        griddash="dot",
+                        showgrid=True,
+                        zeroline=False,
+                        range=[-1, 1],
+                        side="left",
+                    ),
+                    yaxis2=dict(
+                        title=dict(text="Price (USD)", font=dict(color="#00ff88")),
+                        tickfont=dict(color="#00ff88"),
+                        gridcolor="rgba(0,0,0,0)",
+                        showgrid=False,
+                        zeroline=False,
+                        overlaying="y",
+                        side="right",
+                    ),
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom", y=1.02,
+                        xanchor="right", x=1,
+                        bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#b8c5d6"),
+                    ),
+                    shapes=[dict(
+                        type="line", xref="paper", x0=0, x1=1,
+                        yref="y", y0=0, y1=0,
+                        line=dict(color="white", dash="dot", width=1),
+                        opacity=0.3,
+                    )],
+                    margin=dict(l=60, r=60, t=50, b=40),
+                    height=350,
+                    hovermode="x unified",
+                )
+
+                st.plotly_chart(fig_overlay, use_container_width=True, config={"displayModeBar": False})
+
+    # ── Bull/Bear Ratio Timeline ──
+    st.markdown('<p class="section-title">Bull/Bear Ratio Timeline</p>', unsafe_allow_html=True)
+
+    if not df_sent.empty:
+        if ticker == "All Tickers":
+            bb_df = (
+                df_sent.groupby("date")
+                .agg(bullish_count=("bullish_count", "sum"), bearish_count=("bearish_count", "sum"))
+                .reset_index()
+            )
+            bb_df["bull_bear_ratio"] = bb_df.apply(
+                lambda r: r["bullish_count"] / r["bearish_count"] if r["bearish_count"] > 0
+                else (r["bullish_count"] if r["bullish_count"] > 0 else None),
+                axis=1,
+            )
+        else:
+            bb_df = df_sent[df_sent["ticker"] == ticker][["date", "bull_bear_ratio", "bullish_count", "bearish_count"]].copy()
+            bb_df["bull_bear_ratio"] = bb_df.apply(
+                lambda r: r["bull_bear_ratio"] if r["bearish_count"] > 0
+                else (r["bullish_count"] if r["bullish_count"] > 0 else None),
+                axis=1,
+            )
+
+        bb_df = bb_df.dropna(subset=["bull_bear_ratio"]).sort_values("date")
+
+        if not bb_df.empty:
+            def bar_color(ratio):
+                if ratio > 1.1:
+                    return "#00ff88"
+                elif ratio < 0.9:
+                    return "#ff4444"
+                else:
+                    return "#ffeb3b"
+
+            colors = [bar_color(r) for r in bb_df["bull_bear_ratio"]]
+
+            fig_bb = go.Figure()
+            fig_bb.add_trace(go.Bar(
+                x=bb_df["date"],
+                y=bb_df["bull_bear_ratio"],
+                marker_color=colors,
+                customdata=bb_df[["bullish_count", "bearish_count"]].values,
+                hovertemplate=(
+                    "<b>%{x|%b %d, %Y}</b><br>"
+                    "Ratio: %{y:.2f}:1<br>"
+                    "Bullish: %{customdata[0]}<br>"
+                    "Bearish: %{customdata[1]}<extra></extra>"
+                ),
+                name="Bull/Bear Ratio",
+            ))
+
+            fig_bb.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#b8c5d6", family="Courier New"),
+                title=dict(text="Bull/Bear Ratio Timeline", font=dict(color="#ffffff", size=14)),
+                xaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False),
+                yaxis=dict(
+                    gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False,
+                    title="Ratio",
+                ),
+                shapes=[dict(
+                    type="line", xref="paper", x0=0, x1=1,
+                    yref="y", y0=1.0, y1=1.0,
+                    line=dict(color="white", dash="dash", width=1),
+                    opacity=0.5,
+                )],
+                annotations=[
+                    dict(
+                        xref="paper", x=0.01, yref="y", y=1.06,
+                        text="Bullish >", showarrow=False,
+                        font=dict(color="#00ff88", size=10),
+                    ),
+                    dict(
+                        xref="paper", x=0.01, yref="y", y=0.94,
+                        text="< Bearish", showarrow=False,
+                        font=dict(color="#ff4444", size=10),
+                    ),
+                ],
+                legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#b8c5d6")),
+                margin=dict(l=40, r=20, t=50, b=40),
+                height=300,
+                showlegend=False,
+            )
+
+            st.plotly_chart(fig_bb, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("No bull/bear data for the selected period.")
+
     # ── Article Volume ──
     st.markdown('<p class="section-title">Article Volume</p>', unsafe_allow_html=True)
 

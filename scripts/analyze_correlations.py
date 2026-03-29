@@ -221,7 +221,7 @@ def plot_heatmap(matrix, title, filepath):
         ax=ax,
         annot=True,
         fmt='.2f',
-        cmap='RdYlGn_r',
+        cmap='RdYlGn',
         vmin=-1, vmax=1, center=0,
         linewidths=0.5,
         linecolor='#cccccc',
