@@ -46,33 +46,36 @@ def parse_alpha_vantage_timestamp(time_str):
         return None
 
 
-def get_latest_news_file(ticker):
-    """Get the most recent news file for a ticker from MinIO."""
+def get_all_news_files(ticker):
+    """Get all news files for a ticker from MinIO, merged into one feed."""
     s3_client = boto3.client(
         's3',
         endpoint_url=MINIO_ENDPOINT,
         aws_access_key_id=MINIO_ACCESS_KEY,
         aws_secret_access_key=MINIO_SECRET_KEY,
     )
-    
+
     response = s3_client.list_objects_v2(Bucket=BUCKET_NAME, Prefix=ticker)
-    
+
     if 'Contents' not in response:
         print(f"⚠️  No files found for {ticker}")
         return None, None
-    
-    files = sorted(response['Contents'], key=lambda x: x['LastModified'], reverse=True)
-    
-    if not files:
-        return None, None
-    
-    latest_file = files[0]['Key']
-    print(f"📄 Found latest file: {latest_file}")
-    
-    obj = s3_client.get_object(Bucket=BUCKET_NAME, Key=latest_file)
-    content = obj['Body'].read().decode('utf-8')
-    
-    return latest_file, content
+
+    files = sorted(response['Contents'], key=lambda x: x['LastModified'])
+    print(f"📄 Found {len(files)} file(s) for {ticker}")
+
+    merged_feed = []
+    for f in files:
+        obj = s3_client.get_object(Bucket=BUCKET_NAME, Key=f['Key'])
+        content = json.loads(obj['Body'].read().decode('utf-8'))
+        merged_feed.extend(content.get('feed', []))
+
+    return f['Key'], json.dumps({'feed': merged_feed})
+
+
+def get_latest_news_file(ticker):
+    """Alias kept for compatibility — delegates to get_all_news_files."""
+    return get_all_news_files(ticker)
 
 
 def analyze_sentiment_batch(headlines):
@@ -220,5 +223,8 @@ def main(ticker):
 
 if __name__ == "__main__":
     import sys
-    ticker = sys.argv[1] if len(sys.argv) > 1 else "AAPL"
-    main(ticker)
+    if len(sys.argv) > 1:
+        main(sys.argv[1])
+    else:
+        for t in ["AAPL", "MSFT", "GOOGL"]:
+            main(t)

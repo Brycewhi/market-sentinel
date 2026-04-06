@@ -22,8 +22,8 @@ from fetch_news import fetch_and_store_news
 # ---------------------------------------------------------------------------
 
 TICKERS = ["AAPL", "MSFT", "GOOGL"]
-BACKFILL_START = datetime(2026, 1, 1)
-BACKFILL_END = datetime(2026, 6, 30)
+BACKFILL_START = datetime(2026, 3, 1)
+BACKFILL_END = datetime(2026, 4, 4)
 WEEK_DAYS = 7
 DAILY_LIMIT = 25
 PROGRESS_FILE = Path(__file__).parent / "backfill_progress.json"

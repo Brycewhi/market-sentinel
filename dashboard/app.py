@@ -221,6 +221,21 @@ def load_price_data(ticker: str, start_date: date, end_date: date) -> pd.DataFra
         return pd.read_sql(text(query), conn, params=params)
 
 
+@st.cache_data(ttl=300)
+def load_trading_signals(ticker: str) -> pd.DataFrame:
+    engine = get_db_connection()
+    where = "WHERE ticker = :ticker" if ticker != "All Tickers" else ""
+    query = f"""
+        SELECT ticker, date, signal, signal_strength, avg_net_sentiment, next_day_return
+        FROM analytics.trading_signals
+        {where}
+        ORDER BY date
+    """
+    params = {"ticker": ticker} if ticker != "All Tickers" else {}
+    with engine.connect() as conn:
+        return pd.read_sql(text(query), conn, params=params if params else None)
+
+
 @st.cache_data(ttl=3600)
 def load_correlation_data() -> pd.DataFrame:
     path = os.path.join(ANALYSIS_DIR, "correlation_analysis.csv")
@@ -852,27 +867,275 @@ def page_overview(ticker: str, start_date: date, end_date: date):
 
 # ── Page 2: Trading Signals & Backtesting ─────────────────────────────────────
 
-def page_trading_signals():
+def page_trading_signals(ticker: str):
+    import plotly.graph_objects as go
+
+    SIGNAL_COLORS = {"BUY": "#00ff88", "SELL": "#ff4444", "HOLD": "#ffeb3b"}
+
+    CHART_LAYOUT = dict(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#b8c5d6", family="Courier New"),
+        xaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False),
+        yaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#b8c5d6")),
+        margin=dict(l=50, r=20, t=50, b=40),
+    )
+
     st.markdown("""
 <div class="dash-header">
   <p class="dash-title">Trading <span>Signals</span> & Backtesting</p>
-  <p class="dash-subtitle">Automated signal generation and strategy performance analysis</p>
+  <p class="dash-subtitle">Sentiment-driven signal generation and next-day return analysis</p>
 </div>
 """, unsafe_allow_html=True)
 
+    # ── Data note ──
     st.markdown("""
-<div class="placeholder-card">
-  <h2>🚧 Coming Soon</h2>
-  <p>This page is under construction. Planned features:</p>
-  <ul>
-    <li>📈 Real-time buy/sell signal generation from <code>analytics.trading_signals</code></li>
-    <li>💹 Backtest P&L curve vs buy-and-hold benchmark</li>
-    <li>📊 Sharpe ratio, max drawdown, win rate metrics</li>
-    <li>🔔 Signal alert configuration (threshold-based)</li>
-    <li>📉 Sentiment-triggered entry/exit visualization</li>
-  </ul>
+<div style="background:#162c43;border:1px solid #1e3a52;border-left:4px solid #00d4ff;
+            border-radius:8px;padding:0.8rem 1.2rem;margin-bottom:1rem;
+            color:#b8c5d6;font-size:0.85rem;">
+  📊 Backtest covers 25 signals across 3 tickers (AAPL, MSFT, GOOGL) from March 5 – April 4, 2026.
+  HOLD-heavy distribution (80%) reflects cautious market sentiment during this period.
+  Returns shown are actual next-day price change (%). Signals without next-day data are excluded from return metrics.
 </div>
 """, unsafe_allow_html=True)
+
+    # ── Load data ──
+    try:
+        df = load_trading_signals(ticker)
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return
+
+    if df.empty:
+        st.warning("No trading signals found for the selected ticker.")
+        return
+
+    df["date"] = pd.to_datetime(df["date"])
+    df["signal_strength"] = pd.to_numeric(df["signal_strength"], errors="coerce").fillna(0)
+    df["next_day_return"] = pd.to_numeric(df["next_day_return"], errors="coerce")
+
+    df_ret = df.dropna(subset=["next_day_return"])  # rows with known returns
+
+    # ── KPI Calculations ──
+    total_signals = len(df)
+    counts = df["signal"].value_counts()
+    buy_ct  = int(counts.get("BUY",  0))
+    sell_ct = int(counts.get("SELL", 0))
+    hold_ct = int(counts.get("HOLD", 0))
+
+    win_rate = (df_ret["next_day_return"] > 0).mean() * 100 if not df_ret.empty else float("nan")
+
+    avg_by_signal = df_ret.groupby("signal")["next_day_return"].mean() if not df_ret.empty else pd.Series(dtype=float)
+    overall_avg   = df_ret["next_day_return"].mean() if not df_ret.empty else float("nan")
+
+    best_row  = df_ret.loc[df_ret["next_day_return"].idxmax()] if not df_ret.empty else None
+    worst_row = df_ret.loc[df_ret["next_day_return"].idxmin()] if not df_ret.empty else None
+
+    # Best performing signal type
+    best_signal = avg_by_signal.idxmax() if not avg_by_signal.empty else "N/A"
+    best_signal_ret = avg_by_signal.max()   if not avg_by_signal.empty else float("nan")
+
+    # ── KPI Cards ──
+    st.markdown('<p class="section-title">Performance Overview</p>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        kpi_card(
+            "📡", "Total Signals", str(total_signals),
+            f"{buy_ct} BUY / {hold_ct} HOLD / {sell_ct} SELL",
+            delta_positive=None,
+        )
+
+    with c2:
+        wr_str = f"{win_rate:.1f}%" if not np.isnan(win_rate) else "N/A"
+        kpi_card(
+            "🎯", "Win Rate",  wr_str,
+            f"{len(df_ret)} trades with known return",
+            delta_positive=win_rate > 50 if not np.isnan(win_rate) else None,
+        )
+
+    with c3:
+        avg_str = f"{best_signal_ret:+.2f}%" if not np.isnan(best_signal_ret) else "N/A"
+        kpi_card(
+            "📈", f"Best Signal ({best_signal})", avg_str,
+            f"Overall avg: {overall_avg:+.2f}%" if not np.isnan(overall_avg) else "No data",
+            delta_positive=best_signal_ret > 0 if not np.isnan(best_signal_ret) else None,
+        )
+
+    with c4:
+        if best_row is not None and worst_row is not None:
+            best_str  = f"+{best_row['next_day_return']:.2f}%"
+            worst_str = f"{worst_row['next_day_return']:.2f}%"
+            kpi_card(
+                "⚡", "Best / Worst Trade",
+                best_str,
+                f"Worst: {worst_str} ({worst_row['ticker']} {worst_row['date'].strftime('%b %d')})",
+                delta_positive=True,
+            )
+        else:
+            kpi_card("⚡", "Best / Worst Trade", "N/A", "No return data", delta_positive=None)
+
+    # ── Scatter: Signals over time ──
+    st.markdown('<p class="section-title">Signals Over Time</p>', unsafe_allow_html=True)
+
+    fig_scatter = go.Figure()
+
+    for sig, color in SIGNAL_COLORS.items():
+        mask = df["signal"] == sig
+        sub  = df[mask]
+        if sub.empty:
+            continue
+        # Scale marker size: HOLD has strength=0, give it a fixed small size
+        sizes = (sub["signal_strength"] * 400 + 10).clip(lower=10, upper=40)
+        ret_vals = sub["next_day_return"].fillna(float("nan"))
+
+        fig_scatter.add_trace(go.Scatter(
+            x=sub["date"],
+            y=ret_vals,
+            mode="markers",
+            name=sig,
+            marker=dict(
+                color=color,
+                size=sizes,
+                opacity=0.85,
+                line=dict(color="rgba(255,255,255,0.2)", width=1),
+            ),
+            customdata=np.column_stack([
+                sub["ticker"].values,
+                sub["signal_strength"].values,
+                sub["avg_net_sentiment"].values,
+            ]),
+            hovertemplate=(
+                "<b>%{x|%b %d, %Y}</b><br>"
+                "Ticker:    %{customdata[0]}<br>"
+                "Signal:    " + sig + "<br>"
+                "Next-Day Return: %{y:.2f}%<br>"
+                "Signal Strength: %{customdata[1]:.4f}<br>"
+                "Avg Sentiment:   %{customdata[2]:.4f}"
+                "<extra></extra>"
+            ),
+        ))
+
+    # Zero-return reference line
+    fig_scatter.add_hline(
+        y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)", line_width=1,
+    )
+
+    fig_scatter.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#b8c5d6", family="Courier New"),
+        title=dict(text="Trading Signals Over Time", font=dict(color="#ffffff", size=14)),
+        xaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False, title="Date"),
+        yaxis=dict(
+            gridcolor="#243a52", griddash="dot", showgrid=True,
+            title="Next-Day Return (%)",
+            zeroline=True, zerolinecolor="rgba(255,255,255,0.2)",
+        ),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#b8c5d6")),
+        margin=dict(l=50, r=20, t=50, b=40),
+        height=400,
+        hovermode="closest",
+    )
+
+    st.plotly_chart(fig_scatter, use_container_width=True, config={"displayModeBar": False})
+
+    # ── Two charts side by side ──
+    st.markdown('<p class="section-title">Signal Distribution & Return Analysis</p>', unsafe_allow_html=True)
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        # Bar chart: signal distribution
+        sig_order = ["BUY", "HOLD", "SELL"]
+        sig_counts = [int(counts.get(s, 0)) for s in sig_order]
+        sig_pcts   = [c / total_signals * 100 for c in sig_counts]
+        bar_colors = [SIGNAL_COLORS[s] for s in sig_order]
+
+        fig_bar = go.Figure(go.Bar(
+            x=sig_order,
+            y=sig_counts,
+            marker_color=bar_colors,
+            text=[f"{c}<br>({p:.0f}%)" for c, p in zip(sig_counts, sig_pcts)],
+            textposition="outside",
+            textfont=dict(color="#ffffff", size=11),
+            hovertemplate="<b>%{x}</b><br>Count: %{y}<extra></extra>",
+        ))
+
+        fig_bar.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#b8c5d6", family="Courier New"),
+            title=dict(text="Signal Type Distribution", font=dict(color="#ffffff", size=14)),
+            xaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False, title=""),
+            yaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False, title="Count"),
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#b8c5d6")),
+            margin=dict(l=50, r=20, t=50, b=40),
+            height=300,
+            showlegend=False,
+        )
+        st.plotly_chart(fig_bar, use_container_width=True, config={"displayModeBar": False})
+
+    with col_right:
+        # Bar chart: avg return by signal type (only signals with return data)
+        if not avg_by_signal.empty:
+            ret_sigs   = [s for s in sig_order if s in avg_by_signal.index]
+            ret_vals_b = [float(avg_by_signal[s]) for s in ret_sigs]
+            ret_colors = [SIGNAL_COLORS[s] for s in ret_sigs]
+
+            # Error bars: std dev
+            std_by_signal = df_ret.groupby("signal")["next_day_return"].std()
+            ret_errs = [float(std_by_signal.get(s, 0)) for s in ret_sigs]
+
+            fig_ret = go.Figure(go.Bar(
+                x=ret_sigs,
+                y=ret_vals_b,
+                marker_color=ret_colors,
+                error_y=dict(type="data", array=ret_errs, color="#ffffff", thickness=1.5, width=4),
+                text=[f"{v:+.2f}%" for v in ret_vals_b],
+                textposition="outside",
+                textfont=dict(color="#ffffff", size=11),
+                hovertemplate="<b>%{x}</b><br>Avg Return: %{y:.2f}%<extra></extra>",
+            ))
+
+            fig_ret.add_hline(
+                y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)", line_width=1,
+            )
+
+            fig_ret.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#b8c5d6", family="Courier New"),
+                title=dict(text="Avg Next-Day Return by Signal Type", font=dict(color="#ffffff", size=14)),
+                xaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False, title=""),
+                yaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True,
+                           title="Avg Return (%)", zeroline=True, zerolinecolor="rgba(255,255,255,0.2)"),
+                legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#b8c5d6")),
+                margin=dict(l=50, r=20, t=50, b=40),
+                height=300,
+                showlegend=False,
+            )
+            st.plotly_chart(fig_ret, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Insufficient return data to calculate averages.")
+
+    # ── Signal log table ──
+    st.markdown('<p class="section-title">Signal Log</p>', unsafe_allow_html=True)
+    display_df = df.sort_values("date", ascending=False).copy()
+    display_df["date"] = display_df["date"].dt.strftime("%b %d, %Y")
+    display_df["signal_strength"] = display_df["signal_strength"].apply(lambda x: f"{x:.4f}")
+    display_df["avg_net_sentiment"] = display_df["avg_net_sentiment"].apply(
+        lambda x: f"{x:+.4f}" if pd.notna(x) else "—"
+    )
+    display_df["next_day_return"] = display_df["next_day_return"].apply(
+        lambda x: f"{x:+.2f}%" if pd.notna(x) else "—"
+    )
+    display_df = display_df.rename(columns={
+        "date": "Date", "ticker": "Ticker", "signal": "Signal",
+        "signal_strength": "Signal Strength", "avg_net_sentiment": "Avg Sentiment",
+        "next_day_return": "Next-Day Return",
+    })
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 # ── Page 3: Statistical Analysis ─────────────────────────────────────────────
 
@@ -931,7 +1194,7 @@ def main():
     if page == "Overview Dashboard":
         page_overview(ticker, start_date, end_date)
     elif page == "Trading Signals & Backtesting":
-        page_trading_signals()
+        page_trading_signals(ticker)
     elif page == "Statistical Analysis":
         page_statistical_analysis()
     elif page == "Multi-Ticker Comparison":
