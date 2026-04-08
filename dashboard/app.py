@@ -1139,51 +1139,462 @@ def page_trading_signals(ticker: str):
 
 # ── Page 3: Statistical Analysis ─────────────────────────────────────────────
 
-def page_statistical_analysis():
+@st.cache_data(ttl=300)
+def load_sentiment_with_prices(ticker: str) -> pd.DataFrame:
+    engine = get_db_connection()
+    where = "WHERE ticker = :ticker" if ticker != "All Tickers" else ""
+    query = f"""
+        SELECT ticker, date, avg_net_sentiment, sentiment_volatility,
+               price_change_pct, volume
+        FROM analytics.sentiment_with_prices
+        {where}
+        ORDER BY ticker, date
+    """
+    params = {"ticker": ticker} if ticker != "All Tickers" else {}
+    with engine.connect() as conn:
+        return pd.read_sql(text(query), conn, params=params if params else None)
+
+
+def _corr_heatmap(df: pd.DataFrame, title: str, height: int = 350):
+    """Return a Plotly heatmap figure for the 4 correlation variables."""
+    import plotly.graph_objects as go
+
+    cols = ["avg_net_sentiment", "sentiment_volatility", "price_change_pct", "volume"]
+    labels = ["Sentiment", "Sent. Volatility", "Price Chg %", "Volume"]
+    numeric = df[cols].apply(pd.to_numeric, errors="coerce").dropna()
+
+    if len(numeric) < 3:
+        return None
+
+    corr = numeric.corr()
+    z = corr.values
+    text = [[f"{v:.2f}" for v in row] for row in z]
+
+    fig = go.Figure(go.Heatmap(
+        z=z,
+        x=labels,
+        y=labels,
+        text=text,
+        texttemplate="%{text}",
+        textfont=dict(size=11, color="#ffffff"),
+        colorscale="RdBu_r",
+        zmin=-1, zmax=1,
+        showscale=True,
+        colorbar=dict(thickness=10, tickfont=dict(color="#b8c5d6", size=9)),
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#b8c5d6", family="Courier New"),
+        title=dict(text=title, font=dict(color="#ffffff", size=13)),
+        margin=dict(l=10, r=10, t=40, b=10),
+        height=height,
+        xaxis=dict(side="bottom", tickfont=dict(size=10)),
+        yaxis=dict(tickfont=dict(size=10)),
+    )
+    return fig
+
+
+def page_statistical_analysis(ticker: str):
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    from scipy import stats
+
+    CHART_LAYOUT = dict(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#b8c5d6", family="Courier New"),
+        xaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False),
+        yaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#b8c5d6")),
+        margin=dict(l=50, r=20, t=50, b=40),
+    )
+
     st.markdown("""
 <div class="dash-header">
   <p class="dash-title">Statistical <span>Analysis</span></p>
-  <p class="dash-subtitle">Pearson & Spearman correlations, lag analysis, significance testing</p>
+  <p class="dash-subtitle">Correlation matrices and statistical significance testing</p>
 </div>
 """, unsafe_allow_html=True)
 
-    st.markdown("""
-<div class="placeholder-card">
-  <h2>🚧 Coming Soon</h2>
-  <p>This page is under construction. Planned features:</p>
-  <ul>
-    <li>🔥 Interactive correlation heatmaps (AAPL, MSFT, GOOGL, Overall)</li>
-    <li>📐 Lag analysis: 1D, 3D, 7D sentiment → price lead/lag relationships</li>
-    <li>🧪 Pearson & Spearman correlations with p-value significance stars</li>
-    <li>📊 Distribution plots: sentiment vs return scatter charts</li>
-    <li>📋 Full correlation table with CSV export</li>
-  </ul>
-</div>
-""", unsafe_allow_html=True)
+    # ── Load data ──
+    try:
+        df_all  = load_sentiment_with_prices("All Tickers")
+        df_filt = load_sentiment_with_prices(ticker)
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return
+
+    if df_all.empty:
+        st.warning("No data available.")
+        return
+
+    for col in ["avg_net_sentiment", "sentiment_volatility", "price_change_pct", "volume"]:
+        df_all[col]  = pd.to_numeric(df_all[col],  errors="coerce")
+        df_filt[col] = pd.to_numeric(df_filt[col], errors="coerce")
+
+    # ── Section 1: Overall heatmap + by-ticker heatmaps ──
+    st.markdown('<p class="section-title">Correlation Heatmaps</p>', unsafe_allow_html=True)
+    col_left, col_right = st.columns([1, 1])
+
+    with col_left:
+        label = ticker if ticker != "All Tickers" else "All Tickers"
+        fig_overall = _corr_heatmap(df_filt, f"Overall Correlation — {label}", height=360)
+        if fig_overall:
+            st.plotly_chart(fig_overall, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Insufficient data for correlation heatmap.")
+
+    with col_right:
+        st.markdown(
+            '<div style="font-size:13px;font-weight:600;color:#ffffff;'
+            'margin-bottom:0.5rem">By-Ticker Comparison</div>',
+            unsafe_allow_html=True,
+        )
+        ticker_colors_map = {"AAPL": "#00d4ff", "MSFT": "#00ff88", "GOOGL": "#ff9800"}
+        cols_data = ["avg_net_sentiment", "sentiment_volatility", "price_change_pct", "volume"]
+        labels = ["Sentiment", "Sent. Vol.", "Price Chg", "Volume"]
+
+        fig_sub = make_subplots(
+            rows=1, cols=3,
+            subplot_titles=["AAPL", "MSFT", "GOOGL"],
+            horizontal_spacing=0.08,
+        )
+
+        for i, t in enumerate(["AAPL", "MSFT", "GOOGL"], 1):
+            sub = df_all[df_all["ticker"] == t][cols_data].dropna()
+            if len(sub) >= 3:
+                z = sub.corr().values
+                text = [[f"{v:.2f}" for v in row] for row in z]
+            else:
+                z = [[0] * 4] * 4
+                text = [["N/A"] * 4] * 4
+
+            fig_sub.add_trace(
+                go.Heatmap(
+                    z=z, x=labels, y=labels,
+                    text=text, texttemplate="%{text}",
+                    textfont=dict(size=8, color="#ffffff"),
+                    colorscale="RdBu_r", zmin=-1, zmax=1,
+                    showscale=(i == 3),
+                    colorbar=dict(thickness=8, tickfont=dict(color="#b8c5d6", size=8), x=1.02),
+                ),
+                row=1, col=i,
+            )
+
+        fig_sub.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#b8c5d6", family="Courier New", size=9),
+            height=360,
+            margin=dict(l=5, r=40, t=30, b=5),
+        )
+        for ax in ["xaxis", "xaxis2", "xaxis3", "yaxis", "yaxis2", "yaxis3"]:
+            fig_sub.update_layout(**{ax: dict(tickfont=dict(size=8))})
+
+        st.plotly_chart(fig_sub, use_container_width=True, config={"displayModeBar": False})
+
+    # ── Section 2: Significance table ──
+    st.markdown('<p class="section-title">Statistical Significance</p>', unsafe_allow_html=True)
+
+    src = df_filt.dropna(subset=["avg_net_sentiment", "sentiment_volatility",
+                                  "price_change_pct", "volume"])
+
+    relationships = [
+        ("Sentiment → Price Change",        "avg_net_sentiment",    "price_change_pct"),
+        ("Sent. Volatility → Price Volatility", "sentiment_volatility", "price_change_pct"),
+        ("Sentiment → Volume",              "avg_net_sentiment",    "volume"),
+        ("Sent. Volatility → Volume",       "sentiment_volatility", "volume"),
+    ]
+
+    rows = []
+    for name, col_a, col_b in relationships:
+        a = pd.to_numeric(src[col_a], errors="coerce")
+        b = pd.to_numeric(src[col_b], errors="coerce")
+        mask = a.notna() & b.notna()
+        if mask.sum() >= 3:
+            r, p = stats.pearsonr(a[mask], b[mask])
+        else:
+            r, p = float("nan"), float("nan")
+        if not np.isnan(p):
+            sig = "Yes (p<0.05)" if p < 0.05 else ("Marginal" if p < 0.10 else "No")
+        else:
+            sig = "N/A"
+        rows.append({"Relationship": name, "Correlation (r)": round(r, 3),
+                     "P-value": round(p, 4) if not np.isnan(p) else None, "Significant?": sig})
+
+    sig_df = pd.DataFrame(rows)
+
+    def _color_sig(row):
+        if row["Significant?"] == "Yes (p<0.05)":
+            bg = "background-color: rgba(0,200,100,0.18)"
+        elif row["Significant?"] == "Marginal":
+            bg = "background-color: rgba(255,235,59,0.18)"
+        else:
+            bg = "background-color: rgba(255,68,68,0.12)"
+        return [bg] * len(row)
+
+    styled = sig_df.style.apply(_color_sig, axis=1).format(
+        {"Correlation (r)": "{:.3f}", "P-value": lambda x: f"{x:.4f}" if x is not None else "N/A"}
+    )
+    st.dataframe(styled, use_container_width=True, hide_index=True)
+
+    # ── Section 3: Key Insights ──
+    st.markdown('<p class="section-title">Key Insights</p>', unsafe_allow_html=True)
+
+    insights = []
+    for row in rows:
+        r_val = row["Correlation (r)"]
+        p_val = row["P-value"]
+        if np.isnan(r_val):
+            continue
+        strength = "strong" if abs(r_val) > 0.5 else ("moderate" if abs(r_val) > 0.3 else "weak")
+        direction = "positive" if r_val > 0 else "negative"
+        sig_str = f"p={p_val:.4f}" if p_val is not None else "p=N/A"
+        insights.append(
+            f"**{row['Relationship']}** shows a {strength} {direction} correlation "
+            f"(r={r_val:.3f}, {sig_str}) — "
+            + ("statistically significant." if row["Significant?"] == "Yes (p<0.05)"
+               else "not statistically significant." if row["Significant?"] == "No"
+               else "marginally significant.")
+        )
+
+    # Which ticker has strongest sentiment-price correlation
+    best_t, best_r = None, 0.0
+    for t in ["AAPL", "MSFT", "GOOGL"]:
+        sub = df_all[df_all["ticker"] == t][["avg_net_sentiment", "price_change_pct"]].dropna()
+        if len(sub) >= 3:
+            r_t, _ = stats.pearsonr(sub["avg_net_sentiment"], sub["price_change_pct"])
+            if abs(r_t) > abs(best_r):
+                best_r, best_t = r_t, t
+    if best_t:
+        insights.append(
+            f"**{best_t}** exhibits the strongest sentiment-price relationship "
+            f"(r={best_r:.3f}) among the three tickers."
+        )
+
+    st.markdown("\n\n".join(f"- {i}" for i in insights), unsafe_allow_html=False)
 
 # ── Page 4: Multi-Ticker Comparison ──────────────────────────────────────────
 
+@st.cache_data(ttl=300)
+def load_signals_all_tickers() -> pd.DataFrame:
+    engine = get_db_connection()
+    query = """
+        SELECT ticker, date, signal, signal_strength, avg_net_sentiment,
+               next_day_return, avg_net_sentiment AS sentiment,
+               price_change_pct, volume
+        FROM analytics.trading_signals
+        ORDER BY ticker, date
+    """
+    with engine.connect() as conn:
+        return pd.read_sql(text(query), conn)
+
+
 def page_multi_ticker():
+    import plotly.graph_objects as go
+    from scipy import stats
+
+    TICKER_COLORS = {"AAPL": "#00d4ff", "MSFT": "#00ff88", "GOOGL": "#ff9800"}
+    SIGNAL_COLORS = {"BUY": "#00ff88", "SELL": "#ff4444", "HOLD": "#ffeb3b"}
+
     st.markdown("""
 <div class="dash-header">
   <p class="dash-title">Multi-Ticker <span>Comparison</span></p>
-  <p class="dash-subtitle">Side-by-side sentiment, price, and correlation comparison across tickers</p>
+  <p class="dash-subtitle">Comparative performance and sentiment analysis</p>
 </div>
 """, unsafe_allow_html=True)
 
-    st.markdown("""
-<div class="placeholder-card">
-  <h2>🚧 Coming Soon</h2>
-  <p>This page is under construction. Planned features:</p>
-  <ul>
-    <li>🔄 Normalized price & sentiment comparison: AAPL vs MSFT vs GOOGL</li>
-    <li>📊 Side-by-side KPI comparison grid</li>
-    <li>🏆 Ticker ranking by sentiment momentum and coverage</li>
-    <li>📈 Relative strength index built on sentiment MA divergence</li>
-    <li>🗓️ Event timeline: high-volatility sentiment days across all tickers</li>
-  </ul>
+    st.markdown(
+        '<div style="background:#162c43;border:1px solid #1e3a52;border-left:4px solid #00d4ff;'
+        'border-radius:8px;padding:0.6rem 1.2rem;margin-bottom:1rem;'
+        'color:#b8c5d6;font-size:0.85rem;">'
+        'Showing all tickers for comparison — ticker filter is disabled on this page.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Load data ──
+    try:
+        df = load_signals_all_tickers()
+        df_prices = load_sentiment_with_prices("All Tickers")
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return
+
+    if df.empty:
+        st.warning("No trading signals data available.")
+        return
+
+    for col in ["next_day_return", "price_change_pct", "avg_net_sentiment"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df_prices["price_change_pct"] = pd.to_numeric(df_prices["price_change_pct"], errors="coerce")
+    df_prices["avg_net_sentiment"] = pd.to_numeric(df_prices["avg_net_sentiment"], errors="coerce")
+
+    # ── Section 1: Ticker Performance Cards ──
+    st.markdown('<p class="section-title">Ticker Performance</p>', unsafe_allow_html=True)
+    card_cols = st.columns(3)
+
+    stats_by_ticker = {}
+    for t in ["AAPL", "MSFT", "GOOGL"]:
+        sub = df[df["ticker"] == t]
+        sub_ret = sub.dropna(subset=["next_day_return"])
+        total = len(sub)
+        wins = int((sub_ret["next_day_return"] > 0).sum())
+        win_rate = wins / len(sub_ret) * 100 if len(sub_ret) > 0 else float("nan")
+        avg_ret = sub_ret["next_day_return"].mean() * 100 if not sub_ret.empty else float("nan")
+        best_ret = sub_ret["next_day_return"].max() * 100 if not sub_ret.empty else float("nan")
+        best_date = sub_ret.loc[sub_ret["next_day_return"].idxmax(), "date"] if not sub_ret.empty else None
+        stats_by_ticker[t] = dict(total=total, win_rate=win_rate, avg_ret=avg_ret,
+                                   best_ret=best_ret, best_date=best_date)
+
+    for i, t in enumerate(["AAPL", "MSFT", "GOOGL"]):
+        s = stats_by_ticker[t]
+        wr = s["win_rate"]
+        border_color = ("#00ff88" if (not np.isnan(wr) and wr > 55)
+                        else "#ffeb3b" if (not np.isnan(wr) and wr >= 45)
+                        else "#ff4444")
+        wr_str   = f"{wr:.1f}%" if not np.isnan(wr) else "N/A"
+        avg_str  = f"{s['avg_ret']:+.2f}%" if not np.isnan(s["avg_ret"]) else "N/A"
+        best_str = f"{s['best_ret']:+.2f}%" if not np.isnan(s["best_ret"]) else "N/A"
+        date_str = s["best_date"].strftime("%b %d") if s["best_date"] is not None else ""
+
+        with card_cols[i]:
+            st.markdown(f"""
+<div style="background:rgba(22,44,67,0.8);border:2px solid {border_color};
+            border-radius:10px;padding:1.2rem 1.4rem;margin-bottom:0.5rem;">
+  <div style="font-size:1.3rem;font-weight:800;color:#ffffff;
+              font-family:Courier New;margin-bottom:0.8rem">{t}</div>
+  <div style="font-size:0.72rem;color:#b8c5d6;text-transform:uppercase;
+              letter-spacing:0.08em">Total Signals</div>
+  <div style="font-size:1.6rem;font-weight:700;color:#ffffff;
+              font-family:Courier New">{s['total']}</div>
+  <div style="margin-top:0.6rem;font-size:0.72rem;color:#b8c5d6;
+              text-transform:uppercase;letter-spacing:0.08em">Win Rate</div>
+  <div style="font-size:1.4rem;font-weight:700;color:{border_color};
+              font-family:Courier New">{wr_str}</div>
+  <div style="margin-top:0.6rem;font-size:0.72rem;color:#b8c5d6;
+              text-transform:uppercase;letter-spacing:0.08em">Avg Return</div>
+  <div style="font-size:1.1rem;font-weight:600;color:#ffffff;
+              font-family:Courier New">{avg_str}</div>
+  <div style="margin-top:0.6rem;font-size:0.72rem;color:#b8c5d6;
+              text-transform:uppercase;letter-spacing:0.08em">Best Trade</div>
+  <div style="font-size:1.1rem;font-weight:600;color:#00ff88;
+              font-family:Courier New">{best_str}{f" ({date_str})" if date_str else ""}</div>
 </div>
 """, unsafe_allow_html=True)
+
+    # ── Section 2: Signal performance + Correlation comparison (side by side) ──
+    st.markdown('<p class="section-title">Signal Performance & Correlation</p>', unsafe_allow_html=True)
+    col_sig, col_corr = st.columns(2)
+
+    with col_sig:
+        fig_sig = go.Figure()
+        sig_order = ["BUY", "HOLD", "SELL"]
+        for t, color in TICKER_COLORS.items():
+            sub = df[df["ticker"] == t].dropna(subset=["next_day_return"])
+            win_rates = []
+            for sig in sig_order:
+                sg = sub[sub["signal"] == sig]
+                wr = (sg["next_day_return"] > 0).mean() * 100 if len(sg) > 0 else 0
+                win_rates.append(wr)
+            fig_sig.add_trace(go.Bar(
+                name=t, x=sig_order, y=win_rates,
+                marker_color=color,
+                text=[f"{v:.0f}%" for v in win_rates],
+                textposition="outside",
+                textfont=dict(color="#ffffff", size=10),
+            ))
+
+        fig_sig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#b8c5d6", family="Courier New"),
+            title=dict(text="Win Rate by Signal & Ticker", font=dict(color="#ffffff", size=13)),
+            xaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=False, zeroline=False),
+            yaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True, zeroline=False,
+                       title="Win Rate (%)", range=[0, 130]),
+            barmode="group",
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#b8c5d6")),
+            margin=dict(l=50, r=20, t=50, b=40),
+            height=340,
+        )
+        st.plotly_chart(fig_sig, use_container_width=True, config={"displayModeBar": False})
+
+    with col_corr:
+        corr_vals, corr_tickers = [], []
+        for t in ["AAPL", "MSFT", "GOOGL"]:
+            sub = df_prices[df_prices["ticker"] == t][["avg_net_sentiment", "price_change_pct"]].dropna()
+            if len(sub) >= 3:
+                r, _ = stats.pearsonr(sub["avg_net_sentiment"], sub["price_change_pct"])
+            else:
+                r = 0.0
+            corr_vals.append(round(r, 3))
+            corr_tickers.append(t)
+
+        bar_colors = [TICKER_COLORS[t] for t in corr_tickers]
+        fig_corr = go.Figure(go.Bar(
+            x=corr_tickers,
+            y=corr_vals,
+            marker_color=bar_colors,
+            text=[f"{v:.3f}" for v in corr_vals],
+            textposition="outside",
+            textfont=dict(color="#ffffff", size=11),
+        ))
+        fig_corr.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.3)", line_width=1)
+        fig_corr.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#b8c5d6", family="Courier New"),
+            title=dict(text="Sentiment-Price Correlation by Ticker",
+                       font=dict(color="#ffffff", size=13)),
+            xaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=False, zeroline=False),
+            yaxis=dict(gridcolor="#243a52", griddash="dot", showgrid=True,
+                       title="Pearson r", zeroline=True,
+                       zerolinecolor="rgba(255,255,255,0.2)",
+                       range=[-1.2, 1.2]),
+            margin=dict(l=50, r=20, t=50, b=40),
+            height=340,
+            showlegend=False,
+        )
+        st.plotly_chart(fig_corr, use_container_width=True, config={"displayModeBar": False})
+
+    # ── Section 3: Comparative Stats Table ──
+    st.markdown('<p class="section-title">Comparative Stats</p>', unsafe_allow_html=True)
+
+    table_rows = {}
+    for t in ["AAPL", "MSFT", "GOOGL"]:
+        s = stats_by_ticker[t]
+        sub = df[df["ticker"] == t].dropna(subset=["next_day_return"])
+        worst = sub["next_day_return"].min() * 100 if not sub.empty else float("nan")
+
+        # correlation
+        sp = df_prices[df_prices["ticker"] == t][["avg_net_sentiment", "price_change_pct"]].dropna()
+        r_val = stats.pearsonr(sp["avg_net_sentiment"], sp["price_change_pct"])[0] if len(sp) >= 3 else float("nan")
+
+        table_rows[t] = {
+            "Total Signals": s["total"],
+            "Win Rate (%)": round(s["win_rate"], 1) if not np.isnan(s["win_rate"]) else None,
+            "Avg Return (%)": round(s["avg_ret"], 2) if not np.isnan(s["avg_ret"]) else None,
+            "Best Trade (%)": round(s["best_ret"], 2) if not np.isnan(s["best_ret"]) else None,
+            "Worst Trade (%)": round(worst, 2) if not np.isnan(worst) else None,
+            "Sent-Price Corr": round(r_val, 3) if not np.isnan(r_val) else None,
+        }
+
+    stats_df = pd.DataFrame(table_rows).T  # tickers as rows, metrics as cols
+    stats_df.index.name = "Ticker"
+    stats_df = stats_df.reset_index()
+
+    def _bold_best(col):
+        vals = pd.to_numeric(col, errors="coerce")
+        if vals.isna().all():
+            return [""] * len(col)
+        best_idx = vals.abs().idxmax()
+        return ["font-weight: bold; color: #00ff88" if i == best_idx else "" for i in col.index]
+
+    numeric_cols = [c for c in stats_df.columns if c != "Ticker"]
+    styled_table = stats_df.style.apply(_bold_best, subset=numeric_cols)
+    st.dataframe(styled_table, use_container_width=True, hide_index=True)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -1196,7 +1607,7 @@ def main():
     elif page == "Trading Signals & Backtesting":
         page_trading_signals(ticker)
     elif page == "Statistical Analysis":
-        page_statistical_analysis()
+        page_statistical_analysis(ticker)
     elif page == "Multi-Ticker Comparison":
         page_multi_ticker()
 
