@@ -67,10 +67,15 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    ORCHESTRATION LAYER (Apache Airflow)                  │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  DAG 1: ingest_news_dag.py        │  DAG 2: process_sentiment_dag.py    │
-│  • Fetches news articles daily    │  • Runs FinBERT sentiment analysis  │
-│  • Stores raw JSON in MinIO       │  • Loads results to PostgreSQL      │
-│  • Handles API rate limits        │  • Triggers dbt transformations     │
+│  DAG 1: ingest_news_dag        │  DAG 2: fetch_prices_dag              │
+│  • Fetches news daily (10 PM)  │  • Fetches stock prices (10 PM)       │
+│  • Stores raw JSON in MinIO    │  • Stores in PostgreSQL staging       │
+│  • Handles API rate limits     │  • Covers AAPL, MSFT, GOOGL           │
+├────────────────────────────────┴───────────────────────────────────────┤
+│  DAG 3: process_sentiment_dag  │  DAG 4: dbt_transform_dag             │
+│  • Runs FinBERT analysis (11PM)│  • Runs dbt models (11:30 PM)         │
+│  • Loads to PostgreSQL staging │  • Builds analytics tables            │
+│  • Processes new articles only │  • Generates trading signals          │
 └────────────┬──────────────────────┴──────────────────┬──────────────────┘
              │                                          │
              ▼                                          ▼
@@ -163,14 +168,17 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 ### 2. **AI-Powered Sentiment Analysis**
 - Uses **FinBERT** (BERT fine-tuned on 1.8M financial articles) for domain-specific accuracy
 - Calculates **sentiment volatility** (standard deviation of scores) to capture market uncertainty
-- Processes 68+ articles/day automatically via Airflow DAG
+- ✅ Processes 68+ articles/day automatically via Airflow DAGs
 - Outputs positive/negative/neutral probabilities for each headline
 
 ### 3. **SQL-Based Data Transformations (dbt)**
-- **8 production models** organized in staging → analytics layers
+- **9 production models** organized in staging → analytics layers
 - Key models:
+  - `stg_sentiment.sql`: Cleans and standardizes raw sentiment data
   - `sentiment_with_prices.sql`: Joins daily sentiment with price data
   - `trading_signals.sql`: Generates BUY/HOLD/SELL signals based on thresholds
+  - `volatility_metrics.sql`: Calculates sentiment volatility metrics
+  - `hourly_sentiment_agg.sql`: Hourly sentiment aggregations
 - **Data quality tests:** Ensures sentiment volatility ∈ [0,1], no NULL returns, valid date ranges
 - Handles weekend/holiday edge cases (maps weekend articles to next trading day)
 
@@ -369,9 +377,11 @@ Access Airflow UI at http://localhost:8080
 - **Username:** `admin`
 - **Password:** `admin`
 
-Enable DAGs:
-- `ingest_news_dag` - Daily news ingestion
-- `process_sentiment_dag` - Sentiment analysis
+Enable DAGs (all 4):
+- `ingest_news` - Daily news ingestion (10 PM)
+- `fetch_prices` - Daily price data fetch (10 PM)
+- `process_sentiment` - Sentiment analysis (11 PM)
+- `dbt_transform` - dbt model execution (11:30 PM)
 
 **5. Run Initial Backfill (Optional)**
 
@@ -393,12 +403,16 @@ Open http://localhost:8501 in your browser.
 
 ### Daily Operation
 
-Once configured, the pipeline runs automatically:
+Once configured, the pipeline runs automatically every day:
 
-1. **Daily at 9 AM EST:** `ingest_news_dag` fetches latest news → stores in MinIO
-2. **After ingestion completes:** `process_sentiment_dag` analyzes sentiment → loads to PostgreSQL
-3. **dbt models run:** Transformations execute → `trading_signals` table updates
-4. **Dashboard auto-refreshes:** New data appears in Streamlit UI
+1. **10:00 PM EST:** `ingest_news` and `fetch_prices` DAGs run in parallel
+   - News articles fetched from Alpha Vantage → stored in MinIO
+   - Stock prices fetched from Yahoo Finance → stored in PostgreSQL staging
+2. **11:00 PM EST:** `process_sentiment` DAG runs (depends on news ingestion)
+   - FinBERT analyzes sentiment → loads to PostgreSQL staging
+3. **11:30 PM EST:** `dbt_transform` DAG runs (depends on sentiment processing)
+   - All 9 dbt models execute → `trading_signals` table updates
+4. **Dashboard auto-refreshes:** New data appears in Streamlit UI next morning
 
 ### Manual Operations
 
@@ -424,13 +438,13 @@ SELECT * FROM analytics.trading_signals ORDER BY signal_date DESC LIMIT 10;
 **Run dbt Models Manually:**
 ```bash
 docker exec market-sentinel-airflow-scheduler-1 \
-  bash -c "cd /opt/airflow/market_sentinel && dbt run"
+  bash -c "cd /opt/airflow/dbt_market_sentinel && dbt run"
 ```
 
 **Run dbt Tests:**
 ```bash
 docker exec market-sentinel-airflow-scheduler-1 \
-  bash -c "cd /opt/airflow/market_sentinel && dbt test"
+  bash -c "cd /opt/airflow/dbt_market_sentinel && dbt test"
 ```
 
 ---
@@ -444,30 +458,45 @@ market-sentinel/
 ├── .env.example                # Environment template
 ├── README.md                   # This file
 │
-├── dags/                       # Airflow DAGs
-│   ├── ingest_news_dag.py      # Daily news ingestion
-│   └── process_sentiment_dag.py # Sentiment analysis pipeline
+├── dags/                       # Airflow DAGs (4 production DAGs)
+│   ├── ingest_news_dag.py      # Daily news ingestion (10 PM)
+│   ├── fetch_prices_dag.py     # Daily price data fetch (10 PM)
+│   ├── process_sentiment_dag.py # Sentiment analysis (11 PM)
+│   └── dbt_transform_dag.py    # dbt transformations (11:30 PM)
 │
 ├── scripts/                    # Python ETL scripts
-│   ├── extract_news.py         # Fetch news from Alpha Vantage
-│   ├── process_sentiment.py    # FinBERT sentiment analysis
+│   ├── fetch_news.py           # Fetch news from Alpha Vantage
 │   ├── fetch_prices.py         # Yahoo Finance price data
-│   └── backfill_news.py        # Historical data backfill
+│   ├── process_sentiment.py    # FinBERT sentiment analysis
+│   ├── backfill_news.py        # Historical news backfill
+│   ├── process_sentiment_backfill.py # Historical sentiment processing
+│   ├── backtest_strategy.py    # Trading signal backtesting
+│   ├── analyze_correlations.py # Statistical correlation analysis
+│   └── check_backfill_status.py # Backfill progress tracking
 │
-├── market_sentinel/            # dbt project
+├── dbt_market_sentinel/        # dbt project (9 models)
 │   ├── models/
 │   │   ├── staging/
-│   │   │   ├── stg_sentiment.sql           # Clean raw sentiment
-│   │   │   └── stg_prices.sql              # Clean raw prices
+│   │   │   └── stg_sentiment.sql          # Clean raw sentiment
 │   │   └── analytics/
-│   │       ├── sentiment_with_prices.sql   # Join sentiment + prices
-│   │       ├── trading_signals.sql         # Generate BUY/HOLD/SELL
-│   │       └── [6 other models]
-│   ├── schema.yml              # Model documentation + tests
+│   │       ├── sentiment_with_prices.sql  # Join sentiment + prices
+│   │       ├── trading_signals.sql        # Generate BUY/HOLD/SELL
+│   │       ├── hourly_sentiment_agg.sql   # Hourly aggregations
+│   │       ├── daily_sentiment_summary.sql # Daily summaries
+│   │       ├── rolling_sentiment.sql      # Rolling averages
+│   │       ├── sentiment_trends.sql       # Trend analysis
+│   │       ├── volatility_metrics.sql     # Volatility calculations
+│   │       └── schema.yml                 # Model tests & docs
 │   └── dbt_project.yml         # dbt configuration
 │
 ├── dashboard/
 │   └── app.py                  # Streamlit multi-page dashboard
+│
+├── screenshots/                # Dashboard screenshots for README
+│   ├── page1_overview.png
+│   ├── page2_signals.png
+│   ├── page3_stats.png
+│   └── page4_comparison.png
 │
 └── setup.sql                   # Database initialization schema
 ```
@@ -481,7 +510,7 @@ market-sentinel/
 **Run all tests:**
 ```bash
 docker exec market-sentinel-airflow-scheduler-1 \
-  bash -c "cd /opt/airflow/market_sentinel && dbt test"
+  bash -c "cd /opt/airflow/dbt_market_sentinel && dbt test"
 ```
 
 **Implemented tests:**
@@ -520,15 +549,25 @@ WHERE ABS(next_day_return) > 5.0;  -- Flag outliers (should be empty)
 ### Airflow DAG Parameters
 
 **`ingest_news_dag.py`:**
-- **Schedule:** `@daily` (runs at midnight UTC)
+- **Schedule:** `@daily` at 10:00 PM EST
 - **Retries:** 3
 - **Retry delay:** 5 minutes
 - **Catchup:** False (doesn't backfill missed runs)
 
+**`fetch_prices_dag.py`:**
+- **Schedule:** `@daily` at 10:00 PM EST
+- **Retries:** 3
+- **Retry delay:** 5 minutes
+
 **`process_sentiment_dag.py`:**
-- **Schedule:** Triggered after `ingest_news_dag` completes
+- **Schedule:** `@daily` at 11:00 PM EST (after news ingestion)
 - **Retries:** 2
 - **Timeout:** 30 minutes (for FinBERT processing)
+
+**`dbt_transform_dag.py`:**
+- **Schedule:** `@daily` at 11:30 PM EST (after sentiment processing)
+- **Retries:** 2
+- **Runs:** All 9 dbt models in dependency order
 
 ### dbt Materialization Strategies
 
