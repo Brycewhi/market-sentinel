@@ -1441,8 +1441,8 @@ def page_multi_ticker():
         total = len(sub)
         wins = int((sub_ret["next_day_return"] > 0).sum())
         win_rate = wins / len(sub_ret) * 100 if len(sub_ret) > 0 else float("nan")
-        avg_ret = sub_ret["next_day_return"].mean() * 100 if not sub_ret.empty else float("nan")
-        best_ret = sub_ret["next_day_return"].max() * 100 if not sub_ret.empty else float("nan")
+        avg_ret = sub_ret["next_day_return"].mean() if not sub_ret.empty else float("nan")
+        best_ret = sub_ret["next_day_return"].max() if not sub_ret.empty else float("nan")
         best_date = sub_ret.loc[sub_ret["next_day_return"].idxmax(), "date"] if not sub_ret.empty else None
         stats_by_ticker[t] = dict(total=total, win_rate=win_rate, avg_ret=avg_ret,
                                    best_ret=best_ret, best_date=best_date)
@@ -1565,7 +1565,7 @@ def page_multi_ticker():
     for t in ["AAPL", "MSFT", "GOOGL"]:
         s = stats_by_ticker[t]
         sub = df[df["ticker"] == t].dropna(subset=["next_day_return"])
-        worst = sub["next_day_return"].min() * 100 if not sub.empty else float("nan")
+        worst = sub["next_day_return"].min() if not sub.empty else float("nan")
 
         # correlation
         sp = df_prices[df_prices["ticker"] == t][["avg_net_sentiment", "price_change_pct"]].dropna()
