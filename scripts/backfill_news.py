@@ -7,6 +7,7 @@ Usage:
 
 import os
 import sys
+import time
 from datetime import datetime
 
 from fetch_news import fetch_and_store_news
@@ -40,6 +41,9 @@ def run_backfill():
     failed = 0
 
     for i, ticker in enumerate(TICKERS, 1):
+        if i > 1:
+            time.sleep(3)  # Alpha Vantage: 1 req/sec burst limit
+
         print(f"[{i}/{len(TICKERS)}] Fetching {ticker}... ", end="", flush=True)
 
         result = fetch_and_store_news(

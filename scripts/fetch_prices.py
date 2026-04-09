@@ -21,13 +21,20 @@ DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 TICKERS = ['AAPL', 'MSFT', 'GOOGL']
 
 
-def fetch_price_data(ticker, days=30):
-    """Fetch historical price data for a ticker."""
+def fetch_price_data(ticker, days=30, start_date=None, end_date=None):
+    """Fetch historical price data for a ticker.
+
+    Pass start_date/end_date (str or datetime) for a specific range,
+    or days for a rolling window from today.
+    """
     print(f"Fetching price data for {ticker}...")
-    
+
     try:
         stock = yf.Ticker(ticker)
-        hist = stock.history(period=f"{days}d")
+        if start_date is not None:
+            hist = stock.history(start=start_date, end=end_date)
+        else:
+            hist = stock.history(period=f"{days}d")
         
         if hist.empty:
             print(f"WARNING: No data returned for {ticker}")
