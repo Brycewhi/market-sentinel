@@ -108,11 +108,10 @@ BLOOMBERG_CSS = """
 .dash-title {
     font-size: 1.8rem;
     font-weight: 800;
-    color: var(--text-pri);
+    color: var(--accent);
     letter-spacing: -0.02em;
     margin: 0 0 0.2rem 0;
 }
-.dash-title span { color: var(--accent); }
 .dash-subtitle { color: var(--text-sec); font-size: 0.85rem; margin: 0; }
 
 /* ── Chart containers ── */
@@ -379,7 +378,7 @@ def page_overview(ticker: str, start_date: date, end_date: date):
     last_updated = datetime.now().strftime("%B %d, %Y  %H:%M")
     st.markdown(f"""
 <div class="dash-header">
-  <p class="dash-title">Market <span>Sentinel</span> — Financial Sentiment Analytics</p>
+  <p class="dash-title">Market Sentinel — Financial Sentiment Analytics</p>
   <p class="dash-subtitle">Real-time sentiment tracking & price correlation analysis &nbsp;|&nbsp; Last updated: {last_updated}</p>
 </div>
 """, unsafe_allow_html=True)
@@ -884,7 +883,7 @@ def page_trading_signals(ticker: str):
 
     st.markdown("""
 <div class="dash-header">
-  <p class="dash-title">Trading <span>Signals</span> & Backtesting</p>
+  <p class="dash-title">Trading Signals & Backtesting</p>
   <p class="dash-subtitle">Sentiment-driven signal generation and next-day return analysis</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1176,7 +1175,7 @@ def _corr_heatmap(df: pd.DataFrame, title: str, height: int = 350):
         y=labels,
         text=text,
         texttemplate="%{text}",
-        textfont=dict(size=11, color="#ffffff"),
+        textfont=dict(size=12, color="#ffffff"),
         colorscale="RdBu_r",
         zmin=-1, zmax=1,
         showscale=True,
@@ -1212,7 +1211,7 @@ def page_statistical_analysis(ticker: str):
 
     st.markdown("""
 <div class="dash-header">
-  <p class="dash-title">Statistical <span>Analysis</span></p>
+  <p class="dash-title">Statistical Analysis</p>
   <p class="dash-subtitle">Correlation matrices and statistical significance testing</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1274,7 +1273,7 @@ def page_statistical_analysis(ticker: str):
                 go.Heatmap(
                     z=z, x=labels, y=labels,
                     text=text, texttemplate="%{text}",
-                    textfont=dict(size=8, color="#ffffff"),
+                    textfont=dict(size=9, color="#ffffff"),
                     colorscale="RdBu_r", zmin=-1, zmax=1,
                     showscale=(i == 3),
                     colorbar=dict(thickness=8, tickfont=dict(color="#b8c5d6", size=8), x=1.02),
@@ -1400,7 +1399,7 @@ def page_multi_ticker():
 
     st.markdown("""
 <div class="dash-header">
-  <p class="dash-title">Multi-Ticker <span>Comparison</span></p>
+  <p class="dash-title">Multi-Ticker Comparison</p>
   <p class="dash-subtitle">Comparative performance and sentiment analysis</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1578,7 +1577,7 @@ def page_multi_ticker():
             "Avg Return (%)": round(s["avg_ret"], 2) if not np.isnan(s["avg_ret"]) else None,
             "Best Trade (%)": round(s["best_ret"], 2) if not np.isnan(s["best_ret"]) else None,
             "Worst Trade (%)": round(worst, 2) if not np.isnan(worst) else None,
-            "Sent-Price Corr": round(r_val, 3) if not np.isnan(r_val) else None,
+            "Sent-Price Corr": round(r_val, 2) if not np.isnan(r_val) else None,
         }
 
     stats_df = pd.DataFrame(table_rows).T  # tickers as rows, metrics as cols
