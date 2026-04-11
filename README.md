@@ -57,16 +57,16 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                          DATA SOURCES                                    │
+│                          DATA SOURCES                                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  Alpha Vantage API          │         Yahoo Finance                     │
 │  (News + Sentiment)         │         (Price Data)                      │
-└────────────┬────────────────┴─────────────────┬───────────────────────┘
+└────────────┬────────────────┴─────────────────┬─────────────────────────┘
              │                                   │
              ▼                                   ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    ORCHESTRATION LAYER (Apache Airflow)                  │
-├─────────────────────────────────────────────────────────────────────────┤
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    ORCHESTRATION LAYER (Apache Airflow)                      │
+├──────────────────────────────────────────────────────────────────────────────┤
 │  DAG 1: ingest_news_dag              │  DAG 2: fetch_prices_dag              │
 │  • Fetches news daily (22:00 UTC)    │  • Fetches stock prices (22:00 UTC)   │
 │  • Stores raw JSON in MinIO          │  • Stores in PostgreSQL staging       │
@@ -74,9 +74,9 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 ├──────────────────────────────────────┴───────────────────────────────────────┤
 │  DAG 3: process_sentiment_dag        │  DAG 4: dbt_transform_dag             │
 │  • Runs FinBERT analysis (23:00 UTC) │  • Runs dbt models (23:30 UTC)        │
-│  • Loads to PostgreSQL staging │  • Builds analytics tables            │
-│  • Processes new articles only │  • Generates trading signals          │
-└────────────┬──────────────────────┴──────────────────┬──────────────────┘
+│  • Loads to PostgreSQL staging       |  • Builds analytics tables            │
+│  • Processes new articles only       │  • Generates trading signals          │
+└────────────┬─────────────────────────┴────────────────┬──────────────────────┘
              │                                          │
              ▼                                          ▼
 ┌─────────────────────────┐              ┌─────────────────────────────────┐
