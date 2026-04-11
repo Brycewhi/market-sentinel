@@ -67,13 +67,13 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    ORCHESTRATION LAYER (Apache Airflow)                  │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  DAG 1: ingest_news_dag        │  DAG 2: fetch_prices_dag              │
-│  • Fetches news daily (10 PM)  │  • Fetches stock prices (10 PM)       │
-│  • Stores raw JSON in MinIO    │  • Stores in PostgreSQL staging       │
-│  • Handles API rate limits     │  • Covers AAPL, MSFT, GOOGL           │
-├────────────────────────────────┴───────────────────────────────────────┤
-│  DAG 3: process_sentiment_dag  │  DAG 4: dbt_transform_dag             │
-│  • Runs FinBERT analysis (11PM)│  • Runs dbt models (11:30 PM)         │
+│  DAG 1: ingest_news_dag              │  DAG 2: fetch_prices_dag              │
+│  • Fetches news daily (22:00 UTC)    │  • Fetches stock prices (22:00 UTC)   │
+│  • Stores raw JSON in MinIO          │  • Stores in PostgreSQL staging       │
+│  • Handles API rate limits           │  • Covers AAPL, MSFT, GOOGL           │
+├──────────────────────────────────────┴───────────────────────────────────────┤
+│  DAG 3: process_sentiment_dag        │  DAG 4: dbt_transform_dag             │
+│  • Runs FinBERT analysis (23:00 UTC) │  • Runs dbt models (23:30 UTC)        │
 │  • Loads to PostgreSQL staging │  • Builds analytics tables            │
 │  • Processes new articles only │  • Generates trading signals          │
 └────────────┬──────────────────────┴──────────────────┬──────────────────┘
@@ -193,6 +193,7 @@ Four comprehensive views built in Streamlit:
 
 **Page 1: Overview Dashboard**
 - Real-time KPIs: Total articles, daily average, 7-day sentiment MA, bull/bear ratio
+- Risk-adjusted metrics: Sharpe Ratio, Sortino Ratio, Max Drawdown, Calmar Ratio
 - Sentiment timeline with multiple moving averages (7D, 30D, 90D)
 - Sentiment vs. price overlay chart (dual-axis)
 - Article volume breakdown by ticker
@@ -210,12 +211,18 @@ Four comprehensive views built in Streamlit:
 - Auto-generated key insights based on data
 
 **Page 4: Multi-Ticker Comparison**
-- Side-by-side performance cards with colored borders
+- Side-by-side performance cards with colored borders (includes Sharpe Ratio, Max Drawdown per ticker)
 - Win rate by signal type per ticker
 - Sentiment-price correlation bar chart
-- Comparative stats table (returns, win rates, correlations)
+- Comparative stats table (returns, win rates, Sharpe Ratio, Max Drawdown, correlations)
 
-### 6. **Production-Grade Engineering**
+### 6. **Advanced Analytics**
+- Risk-adjusted performance metrics: Sharpe Ratio, Sortino Ratio, Calmar Ratio (annualized)
+- Maximum drawdown tracking for portfolio risk assessment
+- Statistical significance testing (Pearson's r + p-values across all metric pairs)
+- Comparative multi-ticker risk analysis (per-ticker Sharpe and drawdown breakdown)
+
+### 7. **Production-Grade Engineering**
 - **Dockerized deployment:** Entire stack (Airflow, PostgreSQL, MinIO, Streamlit) runs with one command
 - **Error handling:** Retry logic, graceful degradation, logging
 - **Git version control:** All code, SQL models, and configurations tracked
@@ -246,6 +253,17 @@ Four comprehensive views built in Streamlit:
 - **Overall Sentiment (7-Day MA):** +0.148 (slightly bullish)
 - **Bull/Bear Ratio:** 3.00 (3:1 ratio of positive to negative articles)
 - **Interpretation:** Market coverage was predominantly bullish during this period (Q4 2025 - Q1 2026), consistent with strong tech sector performance
+
+### Risk-Adjusted Metrics (All Tickers)
+
+| Metric | Value | Description |
+|--------|-------|-------------|
+| **Sharpe Ratio** | 2.96 | Annualised risk-adjusted return (risk-free rate: 4%) |
+| **Sortino Ratio** | 5.32 | Downside-risk-adjusted return (penalises losses only) |
+| **Max Drawdown** | 5.38% | Peak-to-trough decline across signal returns |
+| **Calmar Ratio** | 11.17 | Annualised return divided by max drawdown |
+
+*Annualization uses signal frequency (85 signals over 126 trading days ≈ 170 signals/year) rather than assuming continuous daily trading, which would overstate performance for a HOLD-heavy strategy.*
 
 ---
 
@@ -321,8 +339,8 @@ Four comprehensive views built in Streamlit:
 **Future Improvements:**
 - Incorporate additional features (market regime, sector rotation, options flow)
 - Multi-day holding periods (current strategy only measures next-day returns)
-- Risk-adjusted metrics (Sharpe ratio, max drawdown)
 - Intraday data (sentiment may have stronger short-term impact)
+- Portfolio-level risk management (position sizing, stop-loss, take-profit)
 
 ---
 
@@ -378,10 +396,10 @@ Access Airflow UI at http://localhost:8080
 - **Password:** `admin`
 
 Enable DAGs (all 4):
-- `ingest_news` - Daily news ingestion (10 PM)
-- `fetch_prices` - Daily price data fetch (10 PM)
-- `process_sentiment` - Sentiment analysis (11 PM)
-- `dbt_transform` - dbt model execution (11:30 PM)
+- `ingest_news` - Daily news ingestion (22:00 UTC / 5:00 PM EST)
+- `fetch_prices` - Daily price data fetch (22:00 UTC / 5:00 PM EST)
+- `process_sentiment` - Sentiment analysis (23:00 UTC / 6:00 PM EST)
+- `dbt_transform` - dbt model execution (23:30 UTC / 6:30 PM EST)
 
 **5. Run Initial Backfill (Optional)**
 
@@ -405,12 +423,12 @@ Open http://localhost:8501 in your browser.
 
 Once configured, the pipeline runs automatically every day:
 
-1. **10:00 PM EST:** `ingest_news` and `fetch_prices` DAGs run in parallel
+1. **22:00 UTC (5:00 PM EST):** `ingest_news` and `fetch_prices` DAGs run in parallel
    - News articles fetched from Alpha Vantage → stored in MinIO
    - Stock prices fetched from Yahoo Finance → stored in PostgreSQL staging
-2. **11:00 PM EST:** `process_sentiment` DAG runs (depends on news ingestion)
+2. **23:00 UTC (6:00 PM EST):** `process_sentiment` DAG runs (depends on news ingestion)
    - FinBERT analyzes sentiment → loads to PostgreSQL staging
-3. **11:30 PM EST:** `dbt_transform` DAG runs (depends on sentiment processing)
+3. **23:30 UTC (6:30 PM EST):** `dbt_transform` DAG runs (depends on sentiment processing)
    - All 9 dbt models execute → `trading_signals` table updates
 4. **Dashboard auto-refreshes:** New data appears in Streamlit UI next morning
 
@@ -459,10 +477,10 @@ market-sentinel/
 ├── README.md                   # This file
 │
 ├── dags/                       # Airflow DAGs (4 production DAGs)
-│   ├── ingest_news_dag.py      # Daily news ingestion (10 PM)
-│   ├── fetch_prices_dag.py     # Daily price data fetch (10 PM)
-│   ├── process_sentiment_dag.py # Sentiment analysis (11 PM)
-│   └── dbt_transform_dag.py    # dbt transformations (11:30 PM)
+│   ├── ingest_news_dag.py      # Daily news ingestion (22:00 UTC)
+│   ├── fetch_prices_dag.py     # Daily price data fetch (22:00 UTC)
+│   ├── process_sentiment_dag.py # Sentiment analysis (23:00 UTC)
+│   └── dbt_transform_dag.py    # dbt transformations (23:30 UTC)
 │
 ├── scripts/                    # Python ETL scripts
 │   ├── fetch_news.py           # Fetch news from Alpha Vantage
@@ -549,23 +567,23 @@ WHERE ABS(next_day_return) > 5.0;  -- Flag outliers (should be empty)
 ### Airflow DAG Parameters
 
 **`ingest_news_dag.py`:**
-- **Schedule:** `@daily` at 10:00 PM EST
+- **Schedule:** `@daily` at 22:00 UTC (5:00 PM EST)
 - **Retries:** 3
 - **Retry delay:** 5 minutes
 - **Catchup:** False (doesn't backfill missed runs)
 
 **`fetch_prices_dag.py`:**
-- **Schedule:** `@daily` at 10:00 PM EST
+- **Schedule:** `@daily` at 22:00 UTC (5:00 PM EST)
 - **Retries:** 3
 - **Retry delay:** 5 minutes
 
 **`process_sentiment_dag.py`:**
-- **Schedule:** `@daily` at 11:00 PM EST (after news ingestion)
+- **Schedule:** `@daily` at 23:00 UTC (6:00 PM EST, after news ingestion)
 - **Retries:** 2
 - **Timeout:** 30 minutes (for FinBERT processing)
 
 **`dbt_transform_dag.py`:**
-- **Schedule:** `@daily` at 11:30 PM EST (after sentiment processing)
+- **Schedule:** `@daily` at 23:30 UTC (6:30 PM EST, after sentiment processing)
 - **Retries:** 2
 - **Runs:** All 9 dbt models in dependency order
 
@@ -592,21 +610,25 @@ Adjust these thresholds based on backtesting results.
 
 ## 📸 Screenshots
 
-### Page 1: Overview Dashboard
-![Overview Dashboard](screenshots/page1_overview.png)
-*Real-time sentiment tracking with KPIs, sentiment timeline, and bull/bear ratio analysis*
+### Page 1 - Overview Dashboard (Top)
+![Overview Dashboard Top](screenshots/page1_overview.png)
+*Key performance indicators showing 383 total articles, 23.9 avg daily articles, +0.127 sentiment (7-day MA), and 1.09 bull/bear ratio*
 
-### Page 2: Trading Signals & Backtesting
+### Page 1 - Overview Dashboard (Bottom - Risk Metrics)
+![Overview Dashboard Bottom](screenshots/page1_overview_bottom.png)
+*Risk-adjusted metrics section displaying Sharpe Ratio (2.01), Sortino Ratio (3.39), Max Drawdown (4.40%), and Calmar Ratio (5.28) for AAPL, plus sentiment timeline and price overlay charts*
+
+### Page 2 - Trading Signals & Backtesting
 ![Trading Signals](screenshots/page2_signals.png)
-*82 backtested signals with 60.8% win rate, signal distribution, and performance metrics*
+*Comprehensive signal analysis showing 82 total signals (60.8% win rate), signals over time chart, signal distribution (14 BUY, 61 HOLD, 7 SELL), and detailed signal log with next-day returns*
 
-### Page 3: Statistical Analysis
+### Page 3 - Statistical Analysis
 ![Statistical Analysis](screenshots/page3_stats.png)
-*Correlation heatmaps and statistical significance testing across all metrics*
+*Correlation heatmaps (overall and by-ticker) and statistical significance testing showing relationships between sentiment, price changes, and volume. Key finding: Sentiment → Volume correlation (r=-0.199, p=0.0731) is marginally significant*
 
-### Page 4: Multi-Ticker Comparison
+### Page 4 - Multi-Ticker Comparison
 ![Multi-Ticker Comparison](screenshots/page4_comparison.png)
-*Side-by-side performance comparison across AAPL, MSFT, and GOOGL*
+*Side-by-side performance cards for AAPL, MSFT, GOOGL with risk metrics, win rate analysis by signal type, sentiment-price correlation charts, and comparative statistics table*
 
 ---
 
@@ -616,4 +638,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-**Bryce Whiteside** | Stony Brook University | Applied Mathematics & Computer Science (Dec 2027)
+**Bryce Whiteside** | Stony Brook University | Applied Mathematics & Computer Science

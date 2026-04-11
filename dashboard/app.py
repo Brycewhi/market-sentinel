@@ -260,6 +260,55 @@ def load_about_stats() -> dict:
         "last_updated": row[2],
     }
 
+# ── Risk metrics helper ───────────────────────────────────────────────────────
+
+def calc_risk_metrics(returns_series: pd.Series) -> dict:
+    """
+    Compute Sharpe, Sortino, Max Drawdown, and Calmar from a signal-based returns
+    series (values in percent, e.g. 1.5 means +1.5%).
+    Risk-free rate: 4% annual (0.04/252 daily).
+
+    Annualization uses signal frequency rather than assuming continuous daily trading.
+    The dataset covers ~126 trading days (Oct 2025 – Apr 2026); annualizing by the
+    observed signal rate (n_obs / 126 * 252) gives a more accurate picture than
+    treating each signal as a calendar day.
+    """
+    RISK_FREE_DAILY = 0.04 / 252
+    TRADING_DAYS_PER_YEAR = 252
+    PERIOD_TRADING_DAYS = 126  # Oct 2025 – Apr 2026
+
+    r = pd.to_numeric(returns_series, errors="coerce").dropna()
+    if len(r) < 3:
+        return {"sharpe": None, "sortino": None, "max_drawdown": None, "calmar": None}
+
+    r_dec = r / 100  # convert percent → decimal
+    mean_r = r_dec.mean()
+    std_r = r_dec.std()
+
+    # Annualization factor based on actual signal frequency
+    ann_factor = len(r) / PERIOD_TRADING_DAYS * TRADING_DAYS_PER_YEAR
+
+    # Sharpe ratio (annualised by signal frequency)
+    sharpe = ((mean_r - RISK_FREE_DAILY) / std_r * np.sqrt(ann_factor)) if std_r > 0 else None
+
+    # Sortino ratio — downside deviation only
+    downside = r_dec[r_dec < RISK_FREE_DAILY]
+    downside_std = downside.std() if len(downside) > 1 else 0
+    sortino = ((mean_r - RISK_FREE_DAILY) / downside_std * np.sqrt(ann_factor)) if downside_std > 0 else None
+
+    # Max Drawdown from cumulative signal returns
+    cum = (1 + r_dec).cumprod()
+    peak = cum.cummax()
+    drawdown = (cum - peak) / peak * 100
+    max_dd = abs(float(drawdown.min()))
+
+    # Calmar = annualised return / max drawdown
+    ann_ret = mean_r * ann_factor * 100
+    calmar = ann_ret / max_dd if max_dd > 0 else None
+
+    return {"sharpe": sharpe, "sortino": sortino, "max_drawdown": max_dd, "calmar": calmar}
+
+
 # ── Date-range resolver ───────────────────────────────────────────────────────
 
 def resolve_dates(range_label: str, custom_start=None, custom_end=None):
@@ -453,6 +502,41 @@ def page_overview(ticker: str, start_date: date, end_date: date):
         bb_str = f"{'Bullish' if bb_pos else 'Bearish'} bias"
         kpi_card("⚖️", "Bull/Bear Ratio", f"{latest_bb_ratio:.2f}",
                  bb_str, delta_positive=bb_pos)
+
+    # ── Risk-Adjusted Metrics ──
+    st.markdown('<p class="section-title">Risk-Adjusted Metrics</p>', unsafe_allow_html=True)
+    try:
+        df_signals_risk = load_trading_signals(ticker)
+        risk_returns = pd.to_numeric(df_signals_risk["next_day_return"], errors="coerce").dropna()
+        rm = calc_risk_metrics(risk_returns)
+    except Exception:
+        rm = {"sharpe": None, "sortino": None, "max_drawdown": None, "calmar": None}
+
+    r1, r2, r3, r4 = st.columns(4)
+    with r1:
+        sharpe_str = f"{rm['sharpe']:.2f}" if rm["sharpe"] is not None else "N/A"
+        kpi_card("📐", "Sharpe Ratio",
+                 sharpe_str,
+                 "Risk-adjusted return (>1 = good)",
+                 delta_positive=(rm["sharpe"] > 1) if rm["sharpe"] is not None else None)
+    with r2:
+        sortino_str = f"{rm['sortino']:.2f}" if rm["sortino"] is not None else "N/A"
+        kpi_card("📉", "Sortino Ratio",
+                 sortino_str,
+                 "Downside-risk-adjusted return",
+                 delta_positive=(rm["sortino"] > 1) if rm["sortino"] is not None else None)
+    with r3:
+        dd_str = f"{rm['max_drawdown']:.2f}%" if rm["max_drawdown"] is not None else "N/A"
+        kpi_card("🔻", "Max Drawdown",
+                 dd_str,
+                 "Peak-to-trough portfolio decline",
+                 delta_positive=(rm["max_drawdown"] < 10) if rm["max_drawdown"] is not None else None)
+    with r4:
+        calmar_str = f"{rm['calmar']:.2f}" if rm["calmar"] is not None else "N/A"
+        kpi_card("⚖️", "Calmar Ratio",
+                 calmar_str,
+                 "Annualised return / max drawdown",
+                 delta_positive=(rm["calmar"] > 1) if rm["calmar"] is not None else None)
 
     # ── Sentiment Timeline ──
     st.markdown('<p class="section-title">Sentiment Timeline</p>', unsafe_allow_html=True)
@@ -1444,8 +1528,11 @@ def page_multi_ticker():
         avg_ret = sub_ret["next_day_return"].mean() if not sub_ret.empty else float("nan")
         best_ret = sub_ret["next_day_return"].max() if not sub_ret.empty else float("nan")
         best_date = sub_ret.loc[sub_ret["next_day_return"].idxmax(), "date"] if not sub_ret.empty else None
+        risk_m = calc_risk_metrics(sub_ret["next_day_return"])
         stats_by_ticker[t] = dict(total=total, win_rate=win_rate, avg_ret=avg_ret,
-                                   best_ret=best_ret, best_date=best_date)
+                                   best_ret=best_ret, best_date=best_date,
+                                   sharpe=risk_m["sharpe"], max_drawdown=risk_m["max_drawdown"],
+                                   calmar=risk_m["calmar"])
 
     for i, t in enumerate(["AAPL", "MSFT", "GOOGL"]):
         s = stats_by_ticker[t]
@@ -1457,6 +1544,9 @@ def page_multi_ticker():
         avg_str  = f"{s['avg_ret']:+.2f}%" if not np.isnan(s["avg_ret"]) else "N/A"
         best_str = f"{s['best_ret']:+.2f}%" if not np.isnan(s["best_ret"]) else "N/A"
         date_str = s["best_date"].strftime("%b %d") if s["best_date"] is not None else ""
+
+        sharpe_str = f"{s['sharpe']:.2f}" if s["sharpe"] is not None else "N/A"
+        dd_str     = f"{s['max_drawdown']:.2f}%" if s["max_drawdown"] is not None else "N/A"
 
         with card_cols[i]:
             st.markdown(f"""
@@ -1480,6 +1570,14 @@ def page_multi_ticker():
               text-transform:uppercase;letter-spacing:0.08em">Best Trade</div>
   <div style="font-size:1.1rem;font-weight:600;color:#00ff88;
               font-family:Courier New">{best_str}{f" ({date_str})" if date_str else ""}</div>
+  <div style="margin-top:0.6rem;font-size:0.72rem;color:#b8c5d6;
+              text-transform:uppercase;letter-spacing:0.08em">Sharpe Ratio</div>
+  <div style="font-size:1.1rem;font-weight:600;color:#00d4ff;
+              font-family:Courier New">{sharpe_str}</div>
+  <div style="margin-top:0.6rem;font-size:0.72rem;color:#b8c5d6;
+              text-transform:uppercase;letter-spacing:0.08em">Max Drawdown</div>
+  <div style="font-size:1.1rem;font-weight:600;color:#ff9800;
+              font-family:Courier New">{dd_str}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1577,6 +1675,8 @@ def page_multi_ticker():
             "Avg Return (%)": round(s["avg_ret"], 2) if not np.isnan(s["avg_ret"]) else None,
             "Best Trade (%)": round(s["best_ret"], 2) if not np.isnan(s["best_ret"]) else None,
             "Worst Trade (%)": round(worst, 2) if not np.isnan(worst) else None,
+            "Sharpe Ratio": round(s["sharpe"], 2) if s["sharpe"] is not None else None,
+            "Max Drawdown (%)": round(s["max_drawdown"], 2) if s["max_drawdown"] is not None else None,
             "Sent-Price Corr": round(r_val, 2) if not np.isnan(r_val) else None,
         }
 
