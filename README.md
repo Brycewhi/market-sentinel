@@ -59,7 +59,7 @@ Market Sentinel implements a modern **Data Lakehouse architecture** that:
 
 **Analytical Insights:**
 - Statistically significant correlation between sentiment and trading volume (r=-0.218, p=0.0277)
-- MSFT exhibits strongest sentiment-price relationship (r=0.335) among tracked tickers
+- MSFT exhibits strongest sentiment-price relationship (r=0.212) among tracked tickers
 - Conservative signal strategy (79% HOLD) reflects real-world uncertainty in news-based predictions
 - Best single-day return: +4.04% (realistic for daily stock movements)
 
@@ -314,6 +314,7 @@ Four comprehensive views built in Streamlit:
 - **Sentiment → Trading Volume:** r=-0.218, p=0.0277 ✅ **Statistically Significant (p < 0.05)**
 - Sentiment Volatility → Price Volatility: r=0.122, p=0.2231 (not significant)
 - Sentiment → Price Change: r=0.052, p=0.6008 (not significant)
+- Sentiment Volatility → Volume: r=0.123, p=0.2179 (not significant)
 
 ### Backtesting Results
 - **102 signals** generated from March 5 - April 4, 2026
@@ -362,10 +363,11 @@ The negative correlation (r=-0.218, p=0.0277) between sentiment volatility and t
 | Sentiment → Price Change | 0.052 | 0.6008 | ❌ Not significant |
 | Sent. Volatility → Price Volatility | 0.122 | 0.2231 | ❌ Not significant |
 | **Sentiment → Volume** | **-0.218** | **0.0277** | ✅ **Statistically Significant (p < 0.05)** |
+| Sent. Volatility → Volume | 0.123 | 0.2179 | ❌ Not significant |
 
 **By-Ticker Sentiment-Price Correlations:**
 - **AAPL:** r = -0.060 (weak negative, not significant)
-- **MSFT:** r = **0.335** (weak positive, **strongest among three tickers**)
+- **MSFT:** r = **0.212** (weak positive, **strongest among three tickers**)
 - **GOOGL:** r = 0.080 (weak positive, not significant)
 
 **Interpretation:**
@@ -377,7 +379,7 @@ The negative correlation (r=-0.218, p=0.0277) between sentiment volatility and t
    - Weak correlations (r < 0.20) suggest sentiment alone is insufficient for price prediction
    - Consistent with efficient market hypothesis (news quickly priced in)
    
-3. **MSFT shows strongest sentiment sensitivity** (r=0.335)
+3. **MSFT shows strongest sentiment sensitivity** (r=0.212)
    - Microsoft's stock price responds more to news sentiment than Apple or Google
    - Could be due to MSFT's enterprise focus (B2B news has clearer impact)
 
