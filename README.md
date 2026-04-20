@@ -42,7 +42,7 @@ Financial markets react to news, but there's no easy way to:
 ### The Solution
 
 Market Sentinel implements a modern **Data Lakehouse architecture** that:
-- ✅ Ingests financial news daily from Alpha Vantage API (3,191 articles since October 2025)
+- ✅ Ingests financial news daily from Alpha Vantage API (3,186 articles since October 2025)
 - ✅ Stores raw data in an S3-compatible data lake (MinIO) for reprocessability
 - ✅ Processes sentiment with **FinBERT** (finance-specific NLP model)
 - ✅ Transforms data using **dbt** (analytics engineering best practices)
@@ -52,7 +52,7 @@ Market Sentinel implements a modern **Data Lakehouse architecture** that:
 ### Key Outcomes
 
 **Technical Achievement:**
-- Fully automated pipeline processing 83.4 articles/day
+- Fully automated pipeline processing 57.9 articles/day
 - 9 production dbt models with data quality tests
 - Docker-based deployment (entire stack runs with `docker-compose up`)
 - Production-grade error handling and retry logic
@@ -68,12 +68,12 @@ Market Sentinel implements a modern **Data Lakehouse architecture** that:
 ## 🏆 Key Achievements
 
 **Data Quality:**
-- ✅ **Zero duplicates** across 3,191 articles (unique constraints + idempotency)
+- ✅ **Zero duplicates** across 3,186 articles (unique constraints + idempotency)
 - ✅ **99%+ uptime** since October 2025 (6+ months of automated operation)
 - ✅ **4-layer error handling** (Airflow, Python, Database, Monitoring)
 
 **Performance:**
-- ✅ **83.4 articles/day** processed automatically across 3 tickers
+- ✅ **57.9 articles/day** processed automatically across 3 tickers
 - ✅ **80% ML inference optimization** through batch processing
 - ✅ **Daily pipeline** runs at 22:00 UTC without manual intervention
 
@@ -202,12 +202,12 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 - Fetches financial news for AAPL, MSFT, GOOGL from Alpha Vantage API
 - Handles API rate limits gracefully (25 requests/day on free tier)
 - Stores raw JSON in MinIO for data lineage and reprocessability
-- **Total ingested:** 3,191 articles since October 1, 2025
+- **Total ingested:** 3,186 articles since October 1, 2025
 
 ### 2. **AI-Powered Sentiment Analysis**
 - Uses **FinBERT** (BERT fine-tuned on 1.8M financial articles) for domain-specific accuracy
 - Calculates **sentiment volatility** (standard deviation of scores) to capture market uncertainty
-- ✅ Processes 83.4 articles/day automatically via Airflow DAGs
+- ✅ Processes 57.9 articles/day automatically via Airflow DAGs
 - Outputs positive/negative/neutral probabilities for each headline
 
 ### 3. **SQL-Based Data Transformations (dbt)**
@@ -280,29 +280,29 @@ Four comprehensive views built in Streamlit:
 ### Coverage Statistics
 | Metric | Value |
 |--------|-------|
-| **Total Articles Ingested** | 3,191 |
-| **Avg Articles/Day** | 83.4 |
+| **Total Articles Ingested** | 3,186 |
+| **Avg Articles/Day** | 57.9 |
 | **Tickers Tracked** | AAPL, MSFT, GOOGL |
 | **Date Range** | Oct 1, 2025 - Apr 20, 2026 (6+ months) |
 | **Trading Days Covered** | ~130 (excludes weekends/holidays) |
 | **Total Trading Signals** | 102 |
-| **Sentiment Analyses Performed** | 3,191 |
+| **Sentiment Analyses Performed** | 3,186 |
 
 ### Sentiment Distribution
-- **Overall Sentiment (7-Day MA):** +0.148 (slightly bullish)
-- **Bull/Bear Ratio:** 3.00 (3:1 ratio of positive to negative articles)
+- **Overall Sentiment (7-Day MA):** +0.205 (slightly bullish)
+- **Bull/Bear Ratio:** 14.00 (14:1 ratio of positive to negative articles)
 - **Interpretation:** Market coverage was predominantly bullish during this period (Q4 2025 - Q1 2026), consistent with strong tech sector performance
 
 ### Risk-Adjusted Metrics (All Tickers)
 
 | Metric | Value | Description |
 |--------|-------|-------------|
-| **Sharpe Ratio** | 2.96 | Annualised risk-adjusted return (risk-free rate: 4%) |
-| **Sortino Ratio** | 5.32 | Downside-risk-adjusted return (penalises losses only) |
-| **Max Drawdown** | 5.38% | Peak-to-trough decline across signal returns |
-| **Calmar Ratio** | 11.17 | Annualised return divided by max drawdown |
+| **Sharpe Ratio** | 3.49 | Annualised risk-adjusted return (risk-free rate: 4%) |
+| **Sortino Ratio** | 8.57 | Downside-risk-adjusted return (penalises losses only) |
+| **Max Drawdown** | 7.67% | Peak-to-trough decline across signal returns |
+| **Calmar Ratio** | 13.05 | Annualised return divided by max drawdown |
 
-*Annualization uses signal frequency (85 signals over 126 trading days ≈ 170 signals/year) rather than assuming continuous daily trading, which would overstate performance for a HOLD-heavy strategy.*
+*Annualization uses signal frequency (102 signals over ~130 trading days ≈ 197 signals/year) rather than assuming continuous daily trading, which would overstate performance for a HOLD-heavy strategy.*
 
 ---
 
@@ -673,7 +673,7 @@ Adjust these thresholds based on backtesting results.
 
 ### Overview Dashboard
 ![Overview Dashboard](screenshots/page1_overview.png)
-*Key performance indicators: 3,191 articles, 83.4/day average, +0.205 sentiment (7-day MA)*
+*Key performance indicators: 3,186 articles, 57.9/day average, +0.205 sentiment (7-day MA)*
 
 ### Overview Dashboard — Risk Metrics
 ![Overview Risk Metrics](screenshots/page1_overview_bottom.png)
