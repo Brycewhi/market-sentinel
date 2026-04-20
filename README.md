@@ -9,6 +9,9 @@ A production-grade data pipeline that automates financial news ingestion, perfor
 [![Apache Airflow](https://img.shields.io/badge/Airflow-2.10-017CEE.svg)](https://airflow.apache.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)](https://www.postgresql.org/)
 [![dbt](https://img.shields.io/badge/dbt-1.8-FF694B.svg)](https://www.getdbt.com/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Railway-blueviolet.svg)](https://market-sentinel-production.up.railway.app)
+
+**[Live Demo →](https://market-sentinel-production.up.railway.app)**
 
 ---
 

@@ -1,8 +1,44 @@
-.env
-*.pyc
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
 *.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Environment
+.env
+*.env
+
+# Logs
+*.log
+
+# Node
+node_modules/
+
+# Project-specific
 airflow_logs/
 postgres_data/
 minio_data/
