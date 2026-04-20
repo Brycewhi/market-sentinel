@@ -678,9 +678,9 @@ Adjust these thresholds based on backtesting results.
 ![Overview Dashboard](screenshots/page1_overview.png)
 *Key performance indicators: 6,933 articles, 70.7/day average, +0.205 sentiment (7-day MA)*
 
-### Overview Dashboard — Risk Metrics
-![Overview Risk Metrics](screenshots/page1_overview_bottom.png)
-*Risk-adjusted metrics: Sharpe 2.07, Sortino 2.64, Max Drawdown 20.23%, Calmar 3.54 — plus sentiment timeline and price overlay charts*
+### Overview Dashboard — Volume & Price Charts
+![Overview Volume & Price Charts](screenshots/page1_overview_bottom.png)
+*Article volume breakdown by ticker and sentiment vs. price overlay chart*
 
 ### Trading Signals & Backtesting
 ![Trading Signals](screenshots/page2_signals.png)
