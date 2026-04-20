@@ -11,8 +11,6 @@ A production-grade data pipeline that automates financial news ingestion, perfor
 [![dbt](https://img.shields.io/badge/dbt-1.8-FF694B.svg)](https://www.getdbt.com/)
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Railway-blueviolet.svg)](https://market-sentinel-production.up.railway.app)
 
-**[Live Demo →](https://market-sentinel-production.up.railway.app)**
-
 ---
 
 ## 🚀 Live Demo
