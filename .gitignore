@@ -38,6 +38,10 @@ Thumbs.db
 # Node
 node_modules/
 
+# Database dumps
+*.sql.dump
+*_dump.sql
+
 # Project-specific
 airflow_logs/
 postgres_data/
