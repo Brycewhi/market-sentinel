@@ -42,7 +42,7 @@ Financial markets react to news, but there's no easy way to:
 ### The Solution
 
 Market Sentinel implements a modern **Data Lakehouse architecture** that:
-- ✅ Ingests financial news daily from Alpha Vantage API (1,835+ articles since October 2025)
+- ✅ Ingests financial news daily from Alpha Vantage API (3,191 articles since October 2025)
 - ✅ Stores raw data in an S3-compatible data lake (MinIO) for reprocessability
 - ✅ Processes sentiment with **FinBERT** (finance-specific NLP model)
 - ✅ Transforms data using **dbt** (analytics engineering best practices)
@@ -68,7 +68,7 @@ Market Sentinel implements a modern **Data Lakehouse architecture** that:
 ## 🏆 Key Achievements
 
 **Data Quality:**
-- ✅ **Zero duplicates** across 1,835+ articles (unique constraints + idempotency)
+- ✅ **Zero duplicates** across 3,191 articles (unique constraints + idempotency)
 - ✅ **99%+ uptime** since October 2025 (6+ months of automated operation)
 - ✅ **4-layer error handling** (Airflow, Python, Database, Monitoring)
 
@@ -202,7 +202,7 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 - Fetches financial news for AAPL, MSFT, GOOGL from Alpha Vantage API
 - Handles API rate limits gracefully (25 requests/day on free tier)
 - Stores raw JSON in MinIO for data lineage and reprocessability
-- **Total ingested:** 1,835+ articles since October 1, 2025
+- **Total ingested:** 3,191 articles since October 1, 2025
 
 ### 2. **AI-Powered Sentiment Analysis**
 - Uses **FinBERT** (BERT fine-tuned on 1.8M financial articles) for domain-specific accuracy
@@ -280,13 +280,13 @@ Four comprehensive views built in Streamlit:
 ### Coverage Statistics
 | Metric | Value |
 |--------|-------|
-| **Total Articles Ingested** | 1,835+ |
+| **Total Articles Ingested** | 3,191 |
 | **Avg Articles/Day** | 83.4 |
 | **Tickers Tracked** | AAPL, MSFT, GOOGL |
 | **Date Range** | Oct 1, 2025 - Apr 20, 2026 (6+ months) |
 | **Trading Days Covered** | ~130 (excludes weekends/holidays) |
 | **Total Trading Signals** | 102 |
-| **Sentiment Analyses Performed** | 1,835+ (one per article) |
+| **Sentiment Analyses Performed** | 3,191 |
 
 ### Sentiment Distribution
 - **Overall Sentiment (7-Day MA):** +0.148 (slightly bullish)
@@ -673,7 +673,7 @@ Adjust these thresholds based on backtesting results.
 
 ### Overview Dashboard
 ![Overview Dashboard](screenshots/page1_overview.png)
-*Key performance indicators: 1,835 articles, 83.4/day average, +0.205 sentiment (7-day MA)*
+*Key performance indicators: 3,191 articles, 83.4/day average, +0.205 sentiment (7-day MA)*
 
 ### Overview Dashboard — Risk Metrics
 ![Overview Risk Metrics](screenshots/page1_overview_bottom.png)

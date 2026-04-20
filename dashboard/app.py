@@ -326,7 +326,7 @@ def resolve_dates(range_label: str, custom_start=None, custom_end=None):
     if range_label == "Custom Range":
         return custom_start or today - timedelta(days=30), custom_end or today
     # "All Time"
-    return date(2026, 1, 1), today
+    return date(2025, 10, 1), today
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -352,7 +352,7 @@ def render_sidebar() -> tuple:
     date_range = st.sidebar.selectbox(
         "Date Range",
         ["Last 7 Days", "Last 30 Days", "All Time", "Custom Range"],
-        index=1,
+        index=2,
     )
 
     custom_start = custom_end = None
