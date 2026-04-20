@@ -51,6 +51,19 @@ Market Sentinel implements a modern **Data Lakehouse architecture** that:
 
 ---
 
+## 🏆 Key Achievements
+
+| Metric | Value |
+|--------|-------|
+| **Data Integrity** | Zero duplicates across 1,157 articles (unique constraints + idempotency) |
+| **Backtested Win Rate** | 60.8% (p=0.0731, marginally significant) |
+| **System Uptime** | 99%+ over 6 months of automated operation |
+| **Error Handling** | 4-layer strategy (Airflow, Python, Database, Monitoring) |
+| **Throughput** | 68 articles/day processed automatically |
+| **ML Optimization** | 80% inference speedup via batch processing |
+
+---
+
 ## 🏗️ Architecture
 
 Market Sentinel implements a **Data Lakehouse** architecture, combining the flexibility of a data lake with the structure of a data warehouse.
