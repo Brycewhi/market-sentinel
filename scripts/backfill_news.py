@@ -17,8 +17,8 @@ from fetch_news import fetch_and_store_news
 # ---------------------------------------------------------------------------
 
 TICKERS = ["AAPL", "MSFT", "GOOGL"]
-BACKFILL_START = datetime(2025, 10, 1)
-BACKFILL_END = datetime(2026, 4, 7)
+BACKFILL_START = datetime(2025, 12, 3)
+BACKFILL_END = datetime(2025, 12, 31)
 
 # ---------------------------------------------------------------------------
 # Main
@@ -54,6 +54,7 @@ def run_backfill():
             minio_secret_key=minio_secret_key,
             start_date=BACKFILL_START,
             end_date=BACKFILL_END,
+            limit=1000,
         )
 
         if result["success"]:

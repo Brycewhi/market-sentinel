@@ -20,7 +20,7 @@ def _parse_date_arg(date_str):
         raise ValueError(f"Invalid date format '{date_str}'. Expected YYYYMMDD (e.g. 20260101).")
 
 
-def fetch_news_from_alpha_vantage(ticker, api_key, start_date=None, end_date=None):
+def fetch_news_from_alpha_vantage(ticker, api_key, start_date=None, end_date=None, limit=50):
     """
     Fetch news and sentiment from Alpha Vantage API.
 
@@ -29,6 +29,7 @@ def fetch_news_from_alpha_vantage(ticker, api_key, start_date=None, end_date=Non
         api_key: Your Alpha Vantage API key
         start_date: datetime or None — if provided, sets time_from (inclusive)
         end_date: datetime or None — if provided, sets time_to (inclusive, end of day)
+        limit: max articles to return (default 50; use 1000 for backfills on premium tier)
 
     Returns:
         dict: Raw API response containing news articles
@@ -42,7 +43,7 @@ def fetch_news_from_alpha_vantage(ticker, api_key, start_date=None, end_date=Non
         "function": "NEWS_SENTIMENT",
         "tickers": ticker,
         "apikey": api_key,
-        "limit": 50,
+        "limit": limit,
     }
 
     if start_date is not None:
@@ -130,6 +131,7 @@ def fetch_and_store_news(
     minio_secret_key,
     start_date=None,
     end_date=None,
+    limit=50,
 ):
     """
     Complete pipeline: fetch news from API, save to MinIO.
@@ -151,7 +153,7 @@ def fetch_and_store_news(
     """
     api_called = False
     try:
-        news_data = fetch_news_from_alpha_vantage(ticker, api_key, start_date, end_date)
+        news_data = fetch_news_from_alpha_vantage(ticker, api_key, start_date, end_date, limit=limit)
         api_called = True  # quota consumed from this point on
 
         filename = save_to_minio(
