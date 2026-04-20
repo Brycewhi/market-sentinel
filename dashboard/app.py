@@ -18,10 +18,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Constants ────────────────────────────────────────────────────────────────
-# Connects to Postgres exposed on localhost from Docker Compose port mapping.
-# The container uses host 'postgres'; from the host machine use localhost:5434.
-DB_CONNECTION_STRING = "postgresql://market_sentinel:market_sentinel_password@localhost:5432/market_sentinel"
+# ── Database connection ───────────────────────────────────────────────────────
+DATABASE_URL = os.getenv(
+    'DATABASE_URL',
+    'postgresql://market_sentinel:market_sentinel_password@localhost:5432/market_sentinel'
+)
+if DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+
+DB_CONNECTION_STRING = DATABASE_URL
+_DB_CONNECT_ARGS = {'sslmode': 'require'} if 'railway' in DATABASE_URL else {}
 
 TICKERS = ["AAPL", "MSFT", "GOOGL"]
 ANALYSIS_DIR = os.path.join(os.path.dirname(__file__), "..", "scripts", "analysis_results")
@@ -178,7 +184,7 @@ div[data-testid="stRadio"] label { color: var(--text-sec) !important; }
 
 @st.cache_resource
 def get_db_connection():
-    return create_engine(DB_CONNECTION_STRING, pool_pre_ping=True)
+    return create_engine(DB_CONNECTION_STRING, connect_args=_DB_CONNECT_ARGS, pool_pre_ping=True)
 
 
 @st.cache_data(ttl=300)
