@@ -427,7 +427,7 @@ Two sentiment metrics predict trading volume with statistical significance. Sent
 
 **1. Clone the Repository**
 ```bash
-git clone https://github.com/yourusername/market-sentinel.git
+git clone https://github.com/Brycewhi/market-sentinel.git
 cd market-sentinel
 ```
 
