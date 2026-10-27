@@ -2,7 +2,7 @@
 
 > **Financial Data Lakehouse for Sentiment-Driven Market Analysis**
 
-A production-grade data pipeline that automates financial news ingestion, performs AI-powered sentiment analysis using FinBERT, and correlates sentiment patterns with stock price movements across major tech companies.
+A financial data pipeline that ingests news and market data, applies FinBERT sentiment analysis, and provides exploratory analytics for AAPL, MSFT, and GOOGL.
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
@@ -16,11 +16,11 @@ A production-grade data pipeline that automates financial news ingestion, perfor
 ## 🚀 Live Demo
 **Dashboard:** https://market-sentinel-production.up.railway.app
 
-**Status:** 🟢 Production | Deployed on Railway | Last updated: April 20, 2026
+**Deployment:** Railway (the documented dataset and screenshots reflect a snapshot through April 20, 2026)
 
 **Features:**
-- Real-time sentiment analysis powered by FinBERT
-- Trading signal generation with backtested validation
+- FinBERT sentiment analysis on ingested financial news
+- Threshold-based BUY/HOLD/SELL signal generation for exploratory analysis
 - Multi-ticker comparison and correlation analysis
 - Statistical heatmaps and volatility tracking
 
@@ -28,7 +28,7 @@ A production-grade data pipeline that automates financial news ingestion, perfor
 
 ## 🎯 Project Overview
 
-**Market Sentinel** is a comprehensive financial analytics platform that demonstrates production-grade data engineering skills by solving a real-world problem: understanding how news sentiment influences stock market behavior.
+**Market Sentinel** is a financial analytics project for exploring how news sentiment and market indicators vary together. Its analyses are exploratory and do not establish predictive trading performance.
 
 ### The Challenge
 
@@ -46,47 +46,29 @@ Market Sentinel implements a modern **Data Lakehouse architecture** that:
 - ✅ Stores raw data in an S3-compatible data lake (MinIO) for reprocessability
 - ✅ Processes sentiment with **FinBERT** (finance-specific NLP model)
 - ✅ Transforms data using **dbt** (analytics engineering best practices)
-- ✅ Generates 160 backtested trading signals with 54.8% win rate
+- ✅ Generates threshold-based BUY/HOLD/SELL labels for dashboard exploration
 - ✅ Visualizes correlations in an interactive Streamlit dashboard
 
 ### Key Outcomes
 
 **Technical Achievement:**
-- Fully automated pipeline processing 70.7 articles/day
-- 9 production dbt models with data quality tests
-- Docker-based deployment (entire stack runs with `docker-compose up`)
-- Production-grade error handling and retry logic
+- Four Airflow DAGs orchestrate ingestion, sentiment processing, and transformation
+- Eight dbt SQL models organize data into staging and analytics layers
+- Docker Compose configures the local pipeline and dashboard services
+- Retry handling, logging, database constraints, and dbt data-quality checks support the workflow
 
-**Analytical Insights:**
-- Two statistically significant correlations: sentiment→volume (r=-0.237, p=0.0025) and sentiment volatility→volume (r=0.199, p=0.0119)
-- MSFT exhibits strongest sentiment-price relationship (r=0.205) among tracked tickers
-- Conservative signal strategy (83% HOLD) reflects real-world uncertainty in news-based predictions
-- Best single-day return: +4.04% (realistic for daily stock movements)
+**Analytics:** The dashboard supports ticker comparisons, sentiment and market-indicator visualizations, correlation exploration, and inspection of generated signal labels. These views are descriptive and should not be interpreted as evidence of a trading edge.
 
 ---
 
 ## 🏆 Key Achievements
 
-**Data Quality:**
-- ✅ **Zero duplicates** across 6,933 articles (unique constraints + idempotency)
-- ✅ **99%+ uptime** since October 2025 (6+ months of automated operation)
-- ✅ **4-layer error handling** (Airflow, Python, Database, Monitoring)
-
-**Performance:**
-- ✅ **70.7 articles/day** processed automatically across 3 tickers
-- ✅ **80% ML inference optimization** through batch processing
-- ✅ **Daily pipeline** runs at 22:00 UTC without manual intervention
-
-**Backtesting & Statistical Validation:**
-- ✅ **160 trading signals** generated
-- ✅ **54.8% win rate** across all signals with known outcomes
-- ✅ **Two statistically significant correlations**: sentiment→volume (r=-0.237, p=0.0025) and sentiment volatility→volume (r=0.199, p=0.0119)
-- ✅ **+0.23% average return** across signals; best signal type (BUY) averaged +0.45%
-
-**Architecture:**
-- ✅ **9 dbt transformation models** with comprehensive testing framework
-- ✅ **4 Airflow DAGs** orchestrating end-to-end pipeline
-- ✅ **Production lakehouse** (MinIO data lake + PostgreSQL warehouse)
+**Implementation:**
+- ✅ **6,933 financial-news records** in the documented dataset snapshot
+- ✅ **Four Airflow DAGs** orchestrate ingestion, sentiment processing, and dbt transformations
+- ✅ **Eight dbt SQL models** with schema and data-quality tests
+- ✅ **MinIO + PostgreSQL** lakehouse architecture, configured with Docker Compose
+- ✅ **FinBERT inference, Streamlit analytics dashboard, and a separate exploratory backtesting script**
 
 ---
 
@@ -207,11 +189,11 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 ### 2. **AI-Powered Sentiment Analysis**
 - Uses **FinBERT** (BERT fine-tuned on 1.8M financial articles) for domain-specific accuracy
 - Calculates **sentiment volatility** (standard deviation of scores) to capture market uncertainty
-- ✅ Processes 70.7 articles/day automatically via Airflow DAGs
+- ✅ Processes ingested articles through scheduled Airflow DAGs
 - Outputs positive/negative/neutral probabilities for each headline
 
 ### 3. **SQL-Based Data Transformations (dbt)**
-- **9 production models** organized in staging → analytics layers
+- **8 SQL models** organized in staging → analytics layers
 - Key models:
   - `stg_sentiment.sql`: Cleans and standardizes raw sentiment data
   - `sentiment_with_prices.sql`: Joins daily sentiment with price data
@@ -221,11 +203,10 @@ Market Sentinel implements a **Data Lakehouse** architecture, combining the flex
 - **Data quality tests:** Ensures sentiment volatility ∈ [0,1], no NULL returns, valid date ranges
 - Handles weekend/holiday edge cases (maps weekend articles to next trading day)
 
-### 4. **Backtested Trading Signals**
-- **160 signals generated**
-- **54.8% win rate** across all signals with known outcomes
-- Best signal type: **+0.45% average return** (BUY strategy); overall average +0.23%
-- Conservative strategy: 83% HOLD reflects real-world uncertainty
+### 4. **Threshold-Based Trading Signal Labels**
+- Generates BUY/HOLD/SELL labels from sentiment and volatility thresholds
+- Displays signal counts and associated next-day market data for exploratory review
+- A separate script supports configurable strategy backtesting; its output depends on the selected assumptions and should not be presented as validated investment performance
 
 ### 5. **Interactive Multi-Page Dashboard**
 Four comprehensive views built in Streamlit:
@@ -238,31 +219,31 @@ Four comprehensive views built in Streamlit:
 - Article volume breakdown by ticker
 
 **Page 2: Trading Signals & Backtesting**
-- Performance metrics: Total signals, win rate, best/worst trades
+- Signal counts and descriptive next-day return summaries
 - Signal distribution analysis (BUY/HOLD/SELL breakdown)
-- Historical signal scatter plot with color-coded outcomes
+- Historical signal table and visualizations with next-day outcomes
 - Signal log table with actual next-day returns
 
 **Page 3: Statistical Analysis**
 - Overall correlation heatmap (4x4 matrix: sentiment, volatility, price, volume)
 - By-ticker comparison (AAPL, MSFT, GOOGL mini-heatmaps)
-- Statistical significance testing (Pearson's r + p-values)
+- Pearson/Spearman correlation and p-value views for selected metric pairs; these are exploratory analyses
 - Auto-generated key insights based on data
 
 **Page 4: Multi-Ticker Comparison**
 - Side-by-side performance cards with colored borders (includes Sharpe Ratio, Max Drawdown per ticker)
-- Win rate by signal type per ticker
+- Positive-next-day-return share by signal label (descriptive, not executed-trade win rate)
 - Sentiment-price correlation bar chart
-- Comparative stats table (returns, win rates, Sharpe Ratio, Max Drawdown, correlations)
+- Comparative descriptive statistics and correlation views across tickers
 
 ### 6. **Advanced Analytics**
-- Risk-adjusted performance metrics: Sharpe Ratio, Sortino Ratio, Calmar Ratio (annualized)
-- Maximum drawdown tracking for portfolio risk assessment
-- Statistical significance testing (Pearson's r + p-values across all metric pairs)
+- Descriptive return-series calculations, including Sharpe/Sortino/Calmar-style ratios and drawdown
+- These figures describe this dataset and signal construction; they are not validated portfolio performance
+- Exploratory Pearson correlation and p-value views for selected sentiment and market metrics
 - Comparative multi-ticker risk analysis (per-ticker Sharpe and drawdown breakdown)
 
-### 7. **Production-Grade Engineering**
-- **Dockerized deployment:** Entire stack (Airflow, PostgreSQL, MinIO, Streamlit) runs with one command
+### 7. **Pipeline Engineering**
+- **Docker Compose:** Configures the Airflow, PostgreSQL, MinIO, and Streamlit services for local use
 - **Error handling:** Retry logic, graceful degradation, logging
 - **Git version control:** All code, SQL models, and configurations tracked
 - **Environment variables:** API keys secured via `.env` files
@@ -281,7 +262,6 @@ Four comprehensive views built in Streamlit:
 | Metric | Value |
 |--------|-------|
 | **Total Articles Ingested** | 6,933 |
-| **Avg Articles/Day** | 70.7 |
 | **Tickers Tracked** | AAPL, MSFT, GOOGL |
 | **Date Range** | Oct 1, 2025 - Apr 20, 2026 (7 months) |
 | **Trading Days Covered** | ~130 (excludes weekends/holidays) |
@@ -295,118 +275,15 @@ Four comprehensive views built in Streamlit:
 - **Bull/Bear Ratio:** 14.00 (14:1 ratio of positive to negative articles)
 - **Interpretation:** Market coverage was predominantly bullish during this period (Q4 2025 - Q1 2026), consistent with strong tech sector performance
 
-### Risk-Adjusted Metrics (All Tickers)
-
-| Metric | Value | Description |
-|--------|-------|-------------|
-| **Sharpe Ratio** | 2.07 | Annualised risk-adjusted return (risk-free rate: 4%) |
-| **Sortino Ratio** | 2.64 | Downside-risk-adjusted return (penalises losses only) |
-| **Max Drawdown** | 20.23% | Peak-to-trough decline across signal returns |
-| **Calmar Ratio** | 3.54 | Annualised return divided by max drawdown |
-
-*Annualization uses signal frequency (160 signals over ~130 trading days) rather than assuming continuous daily trading, which would overstate performance for a HOLD-heavy strategy.*
+The repository includes an exploratory strategy-analysis script. Its outputs depend on signal rules, assumptions, and the selected dataset window; they are not presented here as validated investment performance.
 
 ---
 
-## 📊 Statistical Results
+## 📊 Exploratory Analysis
 
-**Key Finding:** Sentiment volatility predicts trading volume with statistical significance.
+The project includes scripts and dashboard views for examining sentiment, market indicators, correlations, and threshold-generated signal labels. The checked-in correlation workflow analyzes selected sentiment-to-price relationships. Results vary with the data window and sample size, so the dashboard should be treated as an exploratory analytics tool rather than evidence that sentiment predicts returns or that the signals are profitable.
 
-### Correlation Analysis
-- **Sentiment → Trading Volume:** r=-0.237, p=0.0025 ✅ **Statistically Significant (p < 0.05)**
-- **Sentiment Volatility → Volume:** r=0.199, p=0.0119 ✅ **Statistically Significant (p < 0.05)**
-- Sentiment Volatility → Price Volatility: r=0.009, p=0.9136 (not significant)
-- Sentiment → Price Change: r=0.099, p=0.2119 (not significant)
-
-### Backtesting Results
-- **160 signals** generated from October 2025 - April 2026
-- **54.8% win rate** across all signals with known outcomes
-- **Best signal type:** BUY strategy with +0.45% average return; overall average +0.23%
-- **Per-ticker performance:**
-  - AAPL: 56.5% win rate (63 signals)
-  - MSFT: 59.6% win rate (48 signals)
-  - GOOGL: 47.9% win rate (49 signals)
-
-### Interpretation
-Two sentiment metrics predict trading volume with statistical significance. Sentiment negatively correlates with volume (r=-0.237, p=0.0025), suggesting high-sentiment periods coincide with lower trading activity (possible complacency). Sentiment volatility positively correlates with volume (r=0.199, p=0.0119), meaning disagreement in news coverage drives more trading activity.
-
----
-
-## 🔍 Key Findings
-
-### Trading Signal Performance
-
-**Overall Backtest Results (160 Signals):**
-- **Win Rate:** 54.8% across all signals with known outcomes
-- **Signal Period:** October 2025 - April 2026
-- **Best Signal Type:** +0.45% average return (BUY strategy); overall average +0.23%
-
-**Per-Ticker Breakdown:**
-
-| Ticker | Signals | Win Rate |
-|--------|---------|----------|
-| **AAPL** | 63 | 56.5% |
-| **MSFT** | 48 | 59.6% |
-| **GOOGL** | 49 | 47.9% |
-
-**Key Observations:**
-1. **AAPL and MSFT beat random guessing** (50%), suggesting sentiment has weak-to-moderate predictive power for those tickers
-2. **HOLD signals dominate** (83%) due to conservative thresholds requiring both strong sentiment AND low volatility
-3. **GOOGL underperforms** (47.9%) — slightly below random, possibly due to its more volatile news cycle
-4. **Returns are realistic** (-3% to +4% range) for daily stock movements, validating calculation accuracy
-
-### Statistical Correlations
-
-**Overall (All Tickers Combined):**
-
-| Relationship | Correlation (r) | P-Value | Significance |
-|--------------|----------------|---------|--------------|
-| Sentiment → Price Change | 0.099 | 0.2119 | ❌ Not significant |
-| Sent. Volatility → Price Volatility | 0.009 | 0.9136 | ❌ Not significant |
-| **Sentiment → Volume** | **-0.237** | **0.0025** | ✅ **Statistically Significant (p < 0.05)** |
-| **Sent. Volatility → Volume** | **0.199** | **0.0119** | ✅ **Statistically Significant (p < 0.05)** |
-
-**By-Ticker Sentiment-Price Correlations:**
-- **AAPL:** r = 0.050 (weak positive, not significant)
-- **MSFT:** r = **0.205** (weak positive, **strongest among three tickers**)
-- **GOOGL:** r = 0.140 (weak positive, not significant)
-
-**Interpretation:**
-1. **Two volume correlations are statistically significant**
-   - High sentiment predicts *lower* volume (r=-0.237): possible complacency or consolidation effect
-   - High sentiment volatility predicts *higher* volume (r=0.199): disagreement in news drives trading activity
-
-2. **Most sentiment-price correlations are statistically insignificant**
-   - Weak correlations (r < 0.20) suggest sentiment alone is insufficient for price prediction
-   - Consistent with efficient market hypothesis (news quickly priced in)
-
-3. **MSFT shows strongest sentiment sensitivity** (r=0.205)
-   - Microsoft's stock price responds more to news sentiment than Apple or Google
-   - Could be due to MSFT's enterprise focus (B2B news has clearer impact)
-
-4. **Sentiment volatility doesn't predict price volatility**
-   - Disagreement in news coverage doesn't translate to larger price swings
-   - Suggests market consensus forms quickly despite conflicting narratives
-
-### Practical Implications
-
-**What Works:**
-- ✅ Sentiment beats random guessing for AAPL and MSFT (56.5% and 59.6% vs 50%)
-- ✅ Conservative HOLD-heavy strategy reflects real-world uncertainty appropriately
-- ✅ Two statistically significant volume correlations (r=-0.237 and r=0.199) could inform liquidity/execution strategies
-
-**What Doesn't Work:**
-- ❌ Pure sentiment-based trading without risk management (single-day returns too volatile)
-- ❌ SELL signals in upward-trending markets (negative news often bought as "dip")
-- ❌ Expecting strong sentiment-price correlations (r < 0.20 across most metrics)
-
-**Future Improvements:**
-- Incorporate additional features (market regime, sector rotation, options flow)
-- Multi-day holding periods (current strategy only measures next-day returns)
-- Intraday data (sentiment may have stronger short-term impact)
-- Portfolio-level risk management (position sizing, stop-loss, take-profit)
-
----
+The generated BUY/HOLD/SELL labels are rule-based outputs. The dashboard's positive-next-day-return percentage is a descriptive statistic over rows with known next-day returns, including HOLD labels; it is not an executed-trade win rate. For that reason, this README does not report it as strategy performance.
 
 ## 🚀 Getting Started
 
@@ -493,7 +370,7 @@ Once configured, the pipeline runs automatically every day:
 2. **23:00 UTC (6:00 PM EST):** `process_sentiment` DAG runs (depends on news ingestion)
    - FinBERT analyzes sentiment → loads to PostgreSQL staging
 3. **23:30 UTC (6:30 PM EST):** `dbt_transform` DAG runs (depends on sentiment processing)
-   - All 9 dbt models execute → `trading_signals` table updates
+   - All 8 dbt models execute → `trading_signals` table updates
 4. **Dashboard auto-refreshes:** New data appears in Streamlit UI next morning
 
 ### Manual Operations
@@ -649,7 +526,7 @@ WHERE ABS(next_day_return) > 5.0;  -- Flag outliers (should be empty)
 **`dbt_transform_dag.py`:**
 - **Schedule:** `@daily` at 23:30 UTC (6:30 PM EST, after sentiment processing)
 - **Retries:** 2
-- **Runs:** All 9 dbt models in dependency order
+- **Runs:** All 8 dbt models in dependency order
 
 ### dbt Materialization Strategies
 
@@ -676,23 +553,23 @@ Adjust these thresholds based on backtesting results.
 
 ### Overview Dashboard
 ![Overview Dashboard](screenshots/page1_overview.png)
-*Key performance indicators: 6,933 articles, 70.7/day average, +0.205 sentiment (7-day MA)*
+*Dashboard summary metrics for the documented dataset snapshot.*
 
 ### Overview Dashboard — Volume & Price Charts
 ![Overview Volume & Price Charts](screenshots/page1_overview_bottom.png)
 *Article volume breakdown by ticker and sentiment vs. price overlay chart*
 
-### Trading Signals & Backtesting
+### Trading Signals & Exploratory Analysis
 ![Trading Signals](screenshots/page2_signals.png)
-*160 total signals with 54.8% win rate • BUY avg +0.45% • best trade +4.04%*
+*Rule-based signal labels and descriptive next-day market outcomes.*
 
 ### Statistical Analysis
 ![Statistical Analysis](screenshots/page3_stats.png)
-*Two statistically significant correlations: sentiment→volume (r=-0.237, p=0.0025) and sentiment volatility→volume (r=0.199, p=0.0119)*
+*Exploratory correlations between selected sentiment and market indicators.*
 
 ### Multi-Ticker Comparison
 ![Multi-Ticker Comparison](screenshots/page4_comparison.png)
-*Comparative performance across AAPL (56.5%, 63 signals), MSFT (59.6%, 48 signals), GOOGL (47.9%, 49 signals)*
+*Side-by-side descriptive views for AAPL, MSFT, and GOOGL.*
 
 ---
 
